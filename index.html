@@ -1,0 +1,798 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Chant Booth</title>
+<meta name="description" content="Record the izna fanchant one shout at a time.">
+<meta name="theme-color" content="#fd538f">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>🩷</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=Gowun+Dodum&display=swap">
+
+<style>
+  :root {
+    --pink: #fd538f;
+    --pink-soft: #ffd0e2;
+    --pink-wash: #fff0f6;
+    --purple: #7a52b8;
+    --purple-soft: #ded1f7;
+    --mint: #57c9a3;
+    --mint-wash: #e2f7ef;
+
+    --ground: #fff7fb;
+    --card: #ffffff;
+    --sunk: #fdeef5;
+    --edge: #f6dbe7;
+    --ink: #3a2438;
+    --ink-soft: #6b5464;
+    --muted: #9b8296;
+
+    --shadow: 0 2px 3px rgba(58, 36, 56, .04), 0 12px 28px -14px rgba(58, 36, 56, .18);
+    --radius: 20px;
+
+    --display: 'Fredoka', ui-rounded, 'Segoe UI', system-ui, sans-serif;
+    --body: 'Gowun Dodum', 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui, sans-serif;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --pink-soft: #6d2544;
+      --pink-wash: #2c1723;
+      --purple-soft: #3c2d60;
+      --mint-wash: #16302a;
+      --ground: #171015;
+      --card: #241a22;
+      --sunk: #2e2029;
+      --edge: #3b2b35;
+      --ink: #fbeef5;
+      --ink-soft: #d3bfcb;
+      --muted: #a08e9a;
+      --shadow: 0 2px 3px rgba(0, 0, 0, .3), 0 12px 28px -14px rgba(0, 0, 0, .7);
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --pink-soft: #6d2544;
+    --pink-wash: #2c1723;
+    --purple-soft: #3c2d60;
+    --mint-wash: #16302a;
+    --ground: #171015;
+    --card: #241a22;
+    --sunk: #2e2029;
+    --edge: #3b2b35;
+    --ink: #fbeef5;
+    --ink-soft: #d3bfcb;
+    --muted: #a08e9a;
+    --shadow: 0 2px 3px rgba(0, 0, 0, .3), 0 12px 28px -14px rgba(0, 0, 0, .7);
+  }
+
+  * { box-sizing: border-box; }
+
+  /* A class that sets display beats the browser's own rule for [hidden],
+     so say it here where it cannot be outvoted. */
+  [hidden] { display: none !important; }
+
+  html { color-scheme: light dark; }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--body);
+    font-size: 16px;
+    line-height: 1.6;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  .wrap {
+    max-width: 480px;
+    margin: 0 auto;
+    padding: 20px 18px calc(56px + env(safe-area-inset-bottom));
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+  }
+
+  h1, h2, button { font-family: var(--display); }
+  h1 { font-size: 1.6rem; margin: 0; letter-spacing: -.01em; font-weight: 700; text-wrap: balance; }
+  h2 { font-size: 1.1rem; margin: 0; font-weight: 600; }
+  p { margin: 0; }
+
+  .eyebrow {
+    font-family: var(--display);
+    font-size: .72rem;
+    font-weight: 600;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--pink);
+  }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--edge);
+    border-radius: var(--radius);
+    padding: 20px;
+    box-shadow: var(--shadow);
+  }
+
+  .muted { color: var(--muted); font-size: .88rem; }
+  .soft { color: var(--ink-soft); font-size: .92rem; }
+
+  button {
+    font-size: 1rem;
+    font-weight: 600;
+    border-radius: 999px;
+    border: 1px solid transparent;
+    padding: 12px 22px;
+    cursor: pointer;
+    transition: transform .12s ease;
+    color: inherit;
+    background: var(--sunk);
+    font-family: var(--display);
+  }
+  button:active { transform: scale(.97); }
+  button:focus-visible { outline: 3px solid var(--purple); outline-offset: 2px; }
+  button[disabled] { opacity: .45; cursor: not-allowed; }
+
+  .primary { background: var(--pink); color: #fff; border-color: var(--pink); }
+  .ghost { background: transparent; border-color: var(--edge); color: var(--ink-soft); }
+  .full { width: 100%; }
+  .row { display: flex; gap: 10px; }
+  .row > * { flex: 1; }
+
+  input[type="text"] {
+    width: 100%;
+    font: inherit;
+    color: var(--ink);
+    padding: 12px 16px;
+    border-radius: 14px;
+    border: 1px solid var(--edge);
+    background: var(--sunk);
+  }
+  input[type="text"]:focus-visible { outline: 3px solid var(--purple); outline-offset: 1px; }
+
+  .pips { display: flex; flex-wrap: wrap; gap: 5px; }
+  .pip { height: 6px; flex: 1 1 12px; border-radius: 99px; background: var(--edge); }
+  .pip.done { background: var(--mint); }
+  .pip.now { background: var(--pink); }
+
+  .stage {
+    background: linear-gradient(170deg, var(--pink-wash), var(--card) 70%);
+    border: 1px solid var(--edge);
+    border-radius: var(--radius);
+    padding: 26px 20px;
+    text-align: center;
+    box-shadow: var(--shadow);
+  }
+  .chant {
+    font-size: clamp(1.5rem, 7vw, 2.1rem);
+    font-weight: 400;
+    line-height: 1.45;
+    margin: 14px 0 8px;
+    word-break: keep-all;
+  }
+  .chant .w { color: var(--muted); transition: color .08s linear; }
+  .chant .w.lit { color: var(--pink); }
+  .romaji { font-size: .95rem; color: var(--ink-soft); line-height: 1.5; word-break: break-word; }
+
+  .meter { height: 8px; border-radius: 99px; background: var(--sunk); overflow: hidden; margin-top: 18px; }
+  .meter i { display: block; height: 100%; width: 0; background: var(--pink); border-radius: 99px; }
+
+  .status {
+    font-family: var(--display);
+    font-weight: 600;
+    min-height: 1.6em;
+    margin-top: 12px;
+    color: var(--ink-soft);
+  }
+  .status.hot { color: var(--pink); }
+
+  .countdown {
+    font-family: var(--display);
+    font-size: 3.4rem;
+    font-weight: 700;
+    line-height: 1;
+    color: var(--pink);
+    min-height: 1em;
+  }
+
+  .badge {
+    display: inline-block;
+    background: var(--purple-soft);
+    color: var(--purple);
+    border-radius: 99px;
+    padding: 3px 11px;
+    font-size: .74rem;
+    font-family: var(--display);
+    font-weight: 600;
+  }
+  :root[data-theme="dark"] .badge { color: var(--ink); }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .badge { color: var(--ink); }
+  }
+
+  ol.steps { margin: 0; padding-left: 1.1rem; color: var(--ink-soft); font-size: .93rem; }
+  ol.steps li { margin-bottom: 6px; }
+
+  .tally { display: flex; align-items: baseline; gap: 8px; font-family: var(--display); }
+  .tally b { font-size: 2rem; color: var(--pink); font-weight: 700; }
+
+  .list { display: flex; flex-direction: column; gap: 8px; max-height: 320px; overflow-y: auto; }
+  .li {
+    display: flex; align-items: center; gap: 10px;
+    background: var(--sunk); border-radius: 12px; padding: 9px 13px; font-size: .9rem;
+  }
+  .li .tick { color: var(--mint); font-weight: 700; }
+  .li .t { flex: 1; word-break: keep-all; }
+
+  .note {
+    background: var(--pink-wash);
+    border: 1px dashed var(--pink-soft);
+    border-radius: 14px;
+    padding: 12px 14px;
+    font-size: .86rem;
+    color: var(--ink-soft);
+    margin-top: 14px;
+    word-break: break-word;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; animation: none !important; }
+  }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <p class="eyebrow" id="eyebrow">izna</p>
+    <h1 id="title">Chant Booth</h1>
+    <p class="soft" id="lede">Loading the chants…</p>
+  </header>
+
+  <section id="screen-intro" hidden>
+    <div class="card" style="display:flex;flex-direction:column;gap:14px">
+      <h2>Before you start</h2>
+      <ol class="steps">
+        <li>Somewhere quiet-ish. A phone held a hand's width away is perfect.</li>
+        <li>You'll hear the chant, then a 3-2-1 count, then you shout.</li>
+        <li>No music plays while recording, just your voice. Headphones optional.</li>
+        <li>Redo any take as many times as you like.</li>
+      </ol>
+      <div>
+        <label for="handle" class="muted">Your name for the credits (optional)</label>
+        <input id="handle" type="text" placeholder="@yourhandle" maxlength="40" autocomplete="off">
+      </div>
+      <button class="primary full" id="begin">Let's go</button>
+      <p class="muted">
+        Your voice will be in a public video. Nothing else about you is collected:
+        no email, no account.
+      </p>
+    </div>
+  </section>
+
+  <section id="screen-rec" hidden>
+    <div class="pips" id="pips"></div>
+
+    <div class="stage" style="margin-top:14px">
+      <span class="badge" id="chant-badge"></span>
+      <p class="chant" id="chant-kr"></p>
+      <p class="romaji" id="chant-ro"></p>
+      <div class="meter"><i id="meter-fill"></i></div>
+      <p class="status" id="status">Listen first, then record.</p>
+      <p class="countdown" id="countdown"></p>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:10px;margin-top:14px">
+      <div class="row">
+        <button class="ghost" id="btn-listen">Listen</button>
+        <button class="primary" id="btn-record">Record</button>
+      </div>
+      <div class="row" id="after" hidden>
+        <button class="ghost" id="btn-play">Play mine</button>
+        <button class="ghost" id="btn-again">Redo</button>
+        <button class="primary" id="btn-next">Keep</button>
+      </div>
+      <button class="ghost full" id="btn-skip">Skip this one</button>
+    </div>
+
+    <p class="note" id="save-note" hidden></p>
+  </section>
+
+  <section id="screen-done" hidden>
+    <div class="card" style="display:flex;flex-direction:column;gap:16px">
+      <div>
+        <p class="eyebrow">All done</p>
+        <h2 id="done-title">Thank you!</h2>
+      </div>
+      <p class="soft" id="done-body"></p>
+      <div class="tally"><b id="tally-n">0</b><span class="muted" id="tally-label"></span></div>
+      <div class="list" id="done-list"></div>
+      <div class="row">
+        <button class="ghost" id="btn-hear">Hear my set</button>
+        <button class="ghost" id="btn-back">Fix a take</button>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script src="config.js"></script>
+<script>
+/* ------------------------------------------------------------------ *
+ * Chant Booth
+ *
+ * A fan records the fanchant one shout at a time, so what comes back is
+ * already the right length and already lined up. Everything about the design
+ * follows from one decision: the song never plays while the mic is open.
+ * That keeps the backing track out of the recording, sidesteps iOS ducking
+ * playback the moment a recording starts, and means headphones are optional,
+ * which is the difference between people taking part and not.
+ *
+ * What the fan hears instead is a guide voice (recorded once, through #guide)
+ * with the words sweeping in time, then a count-in. The timings come straight
+ * out of the finished lyric video, so a take drops onto the timeline at a
+ * known offset. Rough alignment is not a compromise here: a crowd chanting in
+ * perfect lockstep sounds wrong, and the natural spread is the sound.
+ * ------------------------------------------------------------------ */
+
+const CFG = window.BOOTH_CONFIG || {};
+const SONG = new URLSearchParams(location.search).get('song') || 'beep';
+
+/**
+ * Guide mode.
+ *
+ * Someone has to shout each chant first so everyone else knows what they are
+ * copying: a click track gives the rhythm but not the words. Adding #guide to
+ * the link turns the same flow into recording that guide. Not a lock, just a
+ * mode the fans never see.
+ */
+const GUIDE = /guide/i.test(location.hash);
+
+const COUNT_IN = 3;   // clicks before the shout
+const BEAT = 0.6;     // seconds between count-in clicks
+const TAIL = 0.7;     // extra recording after the last word, for the shout to land
+
+const $ = (id) => document.getElementById(id);
+const screens = { intro: $('screen-intro'), rec: $('screen-rec'), done: $('screen-done') };
+
+let CHANTS = [];
+let song = null;
+let at = 0;
+const takes = new Map();     // chantId -> {blob, url, mime}
+const guides = new Map();    // chantId -> object URL or null
+let handle = '';
+let busy = false;
+
+/* A stable id for this visitor, so a redo replaces rather than piles up. */
+let sessionId;
+try {
+  sessionId = localStorage.getItem('booth-id-' + SONG);
+  if (!sessionId) {
+    sessionId = 'n' + Math.random().toString(36).slice(2, 10);
+    localStorage.setItem('booth-id-' + SONG, sessionId);
+  }
+} catch (e) {
+  sessionId = 'n' + Math.random().toString(36).slice(2, 10);
+}
+
+const esc = (s) => String(s).replace(/[&<>"]/g, (m) =>
+  ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[m]));
+
+/* ---------------- storage ---------------- */
+
+const CAN_UPLOAD = !!(CFG.url && CFG.key);
+
+/**
+ * Straight to Supabase Storage over REST, no SDK.
+ *
+ * The anon key is meant to live in page code; what stops a passer-by writing
+ * anywhere is the bucket policy, not secrecy. Takes go into a bucket nobody
+ * can read back, guides into one everybody can.
+ */
+async function put(bucket, path, blob, type) {
+  const res = await fetch(
+    `${CFG.url}/storage/v1/object/${bucket}/${encodeURI(path)}`,
+    {
+      method: 'POST',
+      headers: {
+        apikey: CFG.key,
+        Authorization: 'Bearer ' + CFG.key,
+        'Content-Type': type || 'application/octet-stream',
+        'x-upsert': 'true',
+      },
+      body: blob,
+    }
+  );
+  if (!res.ok) throw new Error(res.status + ' ' + (await res.text()).slice(0, 200));
+}
+
+function guideUrl(chantId) {
+  return `${CFG.url}/storage/v1/object/public/guides/${SONG}/${chantId}.webm`;
+}
+
+/* ---------------- audio ---------------- */
+
+let ac = null;
+/** The context can only start inside a gesture, so everything waits for one. */
+function audio() {
+  if (!ac) ac = new (window.AudioContext || window.webkitAudioContext)();
+  if (ac.state === 'suspended') ac.resume();
+  return ac;
+}
+
+/** A short wooden click. `accent` marks the downbeat. */
+function click(when, accent) {
+  const c = audio();
+  const osc = c.createOscillator();
+  const gain = c.createGain();
+  osc.frequency.value = accent ? 1180 : 760;
+  gain.gain.setValueAtTime(0.0001, when);
+  gain.gain.exponentialRampToValueAtTime(accent ? 0.5 : 0.28, when + 0.005);
+  gain.gain.exponentialRampToValueAtTime(0.0001, when + 0.11);
+  osc.connect(gain).connect(c.destination);
+  osc.start(when);
+  osc.stop(when + 0.14);
+}
+
+let mic = null;
+async function getMic() {
+  if (mic) return mic;
+  mic = await navigator.mediaDevices.getUserMedia({
+    audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+  });
+  return mic;
+}
+
+/** Whichever container this browser records: webm on Chrome, mp4 on Safari. */
+const MIME = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/aac']
+  .find((t) => window.MediaRecorder && MediaRecorder.isTypeSupported(t)) || '';
+
+/**
+ * Whether this page is allowed the microphone at all.
+ *
+ * A page inside an iframe only gets the mic if the surrounding page hands it
+ * over, and when it does not the request fails as NotAllowedError, exactly as
+ * if the person had refused. Worth telling apart, so nobody sits there tapping
+ * allow on a prompt that will never come.
+ */
+function framePolicy() {
+  try {
+    const fp = document.featurePolicy || document.permissionsPolicy;
+    if (fp && typeof fp.allowsFeature === 'function') {
+      return fp.allowsFeature('microphone') ? 'frame allows mic' : 'FRAME BLOCKS MIC';
+    }
+  } catch (e) { /* not every browser exposes it */ }
+  return 'frame policy unknown';
+}
+
+async function micTrouble(e) {
+  const name = (e && e.name) || 'Error';
+  const say = {
+    NotAllowedError:
+      'The browser blocked the mic. Tap the padlock in the address bar, allow the ' +
+      'microphone, then reload.',
+    NotFoundError: 'No microphone found on this device.',
+    NotReadableError: 'Another app is using the mic. Close it and try again.',
+    OverconstrainedError: 'This mic did not accept the settings. Try another one.',
+    SecurityError: 'The browser refused mic access on this page.',
+    AbortError: 'The mic stopped before it started. Try again.',
+  }[name] || 'The mic could not start.';
+
+  let state = 'permission unknown';
+  try {
+    state = 'permission ' + (await navigator.permissions.query({ name: 'microphone' })).state;
+  } catch (err) { /* Safari does not answer for the mic */ }
+
+  setStatus(say);
+  note(`${say} (${name} / ${framePolicy()} / ${state})`);
+}
+
+/* ---------------- the words lighting up ---------------- */
+
+function paintChant(c) {
+  $('chant-kr').innerHTML = c.w.map((w) => `<span class="w">${esc(w.k)}</span>`).join(' ');
+  $('chant-ro').textContent = c.ro;
+  $('chant-badge').textContent =
+    `${at + 1} of ${CHANTS.length} · ${c.dur}s` + (c.count > 1 ? ` · ${c.count}x in the song` : '');
+}
+
+/** Light each word at its own moment and fill the meter. */
+function sweep(c, onDone) {
+  const words = [...$('chant-kr').querySelectorAll('.w')];
+  const total = c.dur + TAIL;
+  const t0 = performance.now();
+  (function frame() {
+    const el = (performance.now() - t0) / 1000;
+    words.forEach((node, i) => {
+      const w = c.w[i];
+      node.classList.toggle('lit', !!w && el >= w.t && el < w.t + w.d + 0.12);
+    });
+    $('meter-fill').style.width = Math.min(100, (el / total) * 100) + '%';
+    if (el < total) requestAnimationFrame(frame);
+    else {
+      words.forEach((n) => n.classList.remove('lit'));
+      $('meter-fill').style.width = '0%';
+      onDone && onDone();
+    }
+  })();
+}
+
+function setStatus(text, hot) {
+  $('status').textContent = text;
+  $('status').classList.toggle('hot', !!hot);
+}
+
+function note(text) {
+  $('save-note').textContent = text;
+  $('save-note').hidden = false;
+}
+
+/** Count 3-2-1 on screen and in the ears, then hand back control. */
+function countIn(then) {
+  const c = audio();
+  const start = c.currentTime + 0.25;
+  for (let i = 0; i < COUNT_IN; i++) click(start + i * BEAT, false);
+  click(start + COUNT_IN * BEAT, true);
+
+  let n = COUNT_IN;
+  $('countdown').textContent = n;
+  const tick = setInterval(() => {
+    n -= 1;
+    $('countdown').textContent = n > 0 ? n : '●';
+  }, BEAT * 1000);
+
+  setTimeout(() => { clearInterval(tick); then(); }, (0.25 + COUNT_IN * BEAT) * 1000);
+}
+
+/* ---------------- listen and record ---------------- */
+
+/** The guide for one chant, or null. Fetched once, then remembered. */
+async function loadGuide(id) {
+  if (guides.has(id)) return guides.get(id);
+  if (!CAN_UPLOAD) { guides.set(id, null); return null; }
+  try {
+    const res = await fetch(guideUrl(id), { cache: 'no-cache' });
+    if (!res.ok) { guides.set(id, null); return null; }
+    const url = URL.createObjectURL(await res.blob());
+    guides.set(id, url);
+    return url;
+  } catch (e) {
+    guides.set(id, null);
+    return null;
+  }
+}
+
+async function listen() {
+  if (busy) return;
+  busy = true;
+  const c = CHANTS[at];
+  buttons(false);
+
+  const done = () => {
+    setStatus(GUIDE ? 'Record the guide when ready.' : 'Your turn. Hit Record.');
+    $('countdown').textContent = '';
+    busy = false;
+    buttons(true);
+  };
+
+  const src = await loadGuide(c.id);
+  if (src) {
+    // A voice guide beats clicks: it carries the words, not just the beat.
+    setStatus('Listen…');
+    const el = new Audio(src);
+    el.play().catch(() => {});
+    sweep(c, done);
+    return;
+  }
+
+  setStatus('Rhythm only, no voice guide yet…');
+  const ctx = audio();
+  const t0 = ctx.currentTime + 0.25;
+  c.w.forEach((w, i) => click(t0 + w.t, i === 0));
+  setTimeout(() => sweep(c, done), 250);
+}
+
+async function record() {
+  if (busy) return;
+  busy = true;
+  buttons(false);
+  const c = CHANTS[at];
+
+  let stream;
+  try {
+    setStatus('Allow the mic to start…');
+    stream = await getMic();
+  } catch (e) {
+    await micTrouble(e);
+    busy = false;
+    buttons(true);
+    return;
+  }
+
+  setStatus('Get ready…', true);
+  countIn(() => {
+    let rec;
+    try {
+      rec = new MediaRecorder(stream, MIME ? { mimeType: MIME, audioBitsPerSecond: 32000 } : {});
+    } catch (e) {
+      setStatus('This browser cannot record. Try Chrome, or Safari on iPhone.');
+      busy = false;
+      buttons(true);
+      return;
+    }
+    const parts = [];
+    rec.ondataavailable = (e) => e.data.size && parts.push(e.data);
+    rec.onstop = () => {
+      const blob = new Blob(parts, { type: rec.mimeType || MIME || 'audio/webm' });
+      const old = takes.get(c.id);
+      if (old) URL.revokeObjectURL(old.url);
+      takes.set(c.id, { blob, url: URL.createObjectURL(blob), mime: rec.mimeType || MIME });
+      $('countdown').textContent = '';
+      setStatus('Got it. Have a listen.');
+      $('after').hidden = false;
+      pips();
+      busy = false;
+      buttons(true);
+      save(c, blob, rec.mimeType || MIME);
+    };
+    rec.start();
+    setStatus('Shout!', true);
+    sweep(c, () => rec.state !== 'inactive' && rec.stop());
+  });
+}
+
+function buttons(on) {
+  ['btn-listen', 'btn-record', 'btn-play', 'btn-again', 'btn-next', 'btn-skip']
+    .forEach((id) => { $(id).disabled = !on; });
+}
+
+/**
+ * One file per take, so a redo overwrites just that one and a dropped
+ * connection costs a single shout rather than the whole session.
+ */
+async function save(c, blob, mime) {
+  if (!CAN_UPLOAD) return;
+  try {
+    if (GUIDE) {
+      await put('guides', `${SONG}/${c.id}.webm`, blob, mime);
+      const old = guides.get(c.id);
+      if (old) URL.revokeObjectURL(old);
+      guides.set(c.id, URL.createObjectURL(blob));
+      note('Guide saved. Everyone will hear this when they press Listen.');
+      return;
+    }
+    await put('takes', `${SONG}/${c.id}/${sessionId}.webm`, blob, mime);
+    await put(
+      'takes',
+      `${SONG}/_singers/${sessionId}.json`,
+      new Blob([JSON.stringify({ handle, at: new Date().toISOString(), kept: takes.size })],
+        { type: 'application/json' }),
+      'application/json'
+    );
+    $('save-note').hidden = true;
+  } catch (e) {
+    note('Saved on this phone, but the upload did not go through. Keep going, and ' +
+      'tell whoever sent you this link. (' + e.message + ')');
+  }
+}
+
+/* ---------------- moving through the list ---------------- */
+
+function pips() {
+  $('pips').innerHTML = CHANTS
+    .map((c, i) => `<span class="pip ${takes.has(c.id) ? 'done' : ''} ${i === at ? 'now' : ''}"></span>`)
+    .join('');
+}
+
+function show(which) {
+  Object.entries(screens).forEach(([k, el]) => { el.hidden = k !== which; });
+  window.scrollTo(0, 0);
+}
+
+function goto(i) {
+  at = i;
+  const c = CHANTS[at];
+  paintChant(c);
+  pips();
+  $('after').hidden = !takes.has(c.id);
+  setStatus(takes.has(c.id) ? 'Kept. Redo it or move on.' : 'Listen first, then record.');
+  $('countdown').textContent = '';
+  $('meter-fill').style.width = '0%';
+  loadGuide(c.id).then((src) => {
+    if (at === i) $('btn-listen').textContent = src ? 'Listen' : 'Rhythm only';
+  });
+}
+
+function advance() {
+  const next = CHANTS.findIndex((c, i) => i > at && !takes.has(c.id));
+  if (next !== -1) return goto(next);
+  const any = CHANTS.findIndex((c) => !takes.has(c.id));
+  if (any !== -1) return goto(any);
+  finish();
+}
+
+function finish() {
+  const n = takes.size;
+  $('tally-n').textContent = n;
+  $('tally-label').textContent = `of ${CHANTS.length} chants recorded`;
+  $('done-title').textContent = n === CHANTS.length ? 'You did every one!' : 'Thank you!';
+  $('done-body').textContent = CAN_UPLOAD
+    ? 'Your takes are in. They get mixed with everyone else’s into the crowd on the video.'
+    : 'Uploading is not set up yet, so these takes live only on this phone.';
+  $('done-list').innerHTML = CHANTS
+    .map((c) => `<div class="li"><span class="tick">${takes.has(c.id) ? '✓' : '·'}</span>` +
+      `<span class="t">${esc(c.kr)}</span></div>`)
+    .join('');
+  show('done');
+}
+
+/* Play every kept take back to back, the payoff for getting through it. */
+function hearSet() {
+  const list = CHANTS.filter((c) => takes.has(c.id));
+  if (!list.length) return;
+  let i = 0;
+  const el = new Audio();
+  const next = () => { if (i < list.length) { el.src = takes.get(list[i++].id).url; el.play().catch(() => {}); } };
+  el.onended = next;
+  next();
+}
+
+/* ---------------- wiring ---------------- */
+
+$('begin').addEventListener('click', () => {
+  handle = $('handle').value.trim().slice(0, 40);
+  audio(); // created inside the gesture, so later clicks are allowed to sound
+  show('rec');
+  goto(0);
+});
+$('btn-listen').addEventListener('click', listen);
+$('btn-record').addEventListener('click', record);
+$('btn-again').addEventListener('click', record);
+$('btn-play').addEventListener('click', () => {
+  const t = takes.get(CHANTS[at].id);
+  if (t) new Audio(t.url).play().catch(() => {});
+});
+$('btn-next').addEventListener('click', advance);
+$('btn-skip').addEventListener('click', advance);
+$('btn-hear').addEventListener('click', hearSet);
+$('btn-back').addEventListener('click', () => { show('rec'); goto(0); });
+
+(async function start() {
+  try {
+    const res = await fetch(`songs/${SONG}.json`, { cache: 'no-cache' });
+    if (!res.ok) throw new Error('song ' + res.status);
+    song = await res.json();
+    CHANTS = song.chants;
+  } catch (e) {
+    $('lede').textContent = 'Could not load the chants for this song. Check the link.';
+    return;
+  }
+
+  document.title = `${song.title} Chant Booth`;
+  $('eyebrow').textContent = `izna · ${song.title}` + (GUIDE ? ' · guide mode' : '');
+  $('title').textContent = GUIDE ? 'Record the guides' : 'Chant Booth';
+  $('lede').textContent = GUIDE
+    ? 'Shout each chant once so every naya knows what they are copying. These are saved ' +
+      'as the guide track, not as a crowd take.'
+    : `Record the ${song.title} fanchant one shout at a time. ${CHANTS.length} of them, ` +
+      'most under a second. Your takes get layered with everyone else’s into the lyric video.';
+
+  if (GUIDE) {
+    $('btn-record').textContent = 'Record guide';
+    $('btn-again').textContent = 'Redo guide';
+  }
+
+  if (!window.MediaRecorder || !navigator.mediaDevices) {
+    $('lede').textContent =
+      'This browser cannot record audio. Open the link in Chrome, or in Safari on iPhone.';
+    return;
+  }
+
+  show('intro');
+  pips();
+})();
+</script>
+</body>
+</html>
