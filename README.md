@@ -174,6 +174,27 @@ audio itself. Every call fails silently: a phone in private browsing throws on
 the first one, and the booth has to keep working from memory alone rather than
 refuse to start.
 
+## Getting the takes back out
+
+Nothing may read the `takes` bucket, which is what keeps fans' recordings
+private, and that applies to you too through the page's key. The dashboard can
+read it, because it authenticates as the project owner and bypasses the
+policies, but clicking through hundreds of files is not a plan. So:
+
+```
+SUPABASE_SERVICE_KEY=... node tools/collect.cjs beep
+SUPABASE_SERVICE_KEY=... node tools/collect.cjs beep --delete
+```
+
+It walks the bucket, writes everything to `collected/beep/<block>/`, checks each
+file landed at the size the bucket claimed, and gathers the handles into
+`credits.txt`. With `--delete` it clears a file only after that check passed, so
+a failed download never costs a take.
+
+The service_role key is on the same dashboard page as the publishable one and
+bypasses every policy. Pass it on the command line for the length of one run.
+It must never reach `config.js`, this repo, or anywhere a browser could see it.
+
 ## What it costs
 
 One fan singing all 21 BEEP blocks is **2.9 minutes of audio, about 2.7 MB** at
@@ -182,6 +203,10 @@ $25/month tier gives 100 GB, so about 38,000. Egress is the other limit, 2 GB a
 month free, but only you ever download these, so a full 1 GB pull is well inside
 it. Dropping to 96 kbps would reach ~500 fans and 64 kbps ~760, at some cost to
 a shout's clarity. 128 is worth keeping unless the free tier actually fills.
+
+Draining the bucket with `collect.cjs --delete` makes that 1 GB a rolling limit
+rather than a ceiling, so the number of fans stops being capped by storage at
+all. Every ~380 fans, pull and clear.
 
 ## Sending takes in
 
