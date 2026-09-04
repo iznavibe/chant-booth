@@ -105,46 +105,62 @@ not secrecy.
 3. **SQL Editor**, run this:
 
 ```sql
--- Anyone may add a take, nobody may read them back.
-create policy "anon can add takes"
-  on storage.objects for insert to anon
-  with check (bucket_id = 'takes');
+create policy "vibechant write" on storage.objects
+  for insert to public
+  with check (bucket_id in ('takes', 'guides'));
 
-create policy "anon can replace own take"
-  on storage.objects for update to anon
-  using (bucket_id = 'takes');
+create policy "vibechant replace" on storage.objects
+  for update to public
+  using      (bucket_id in ('takes', 'guides'))
+  with check (bucket_id in ('takes', 'guides'));
 
--- Guides are readable by everyone and writable while you are recording them.
-create policy "anon can add guides"
-  on storage.objects for insert to anon
-  with check (bucket_id = 'guides');
-
-create policy "anon can replace guides"
-  on storage.objects for update to anon
+-- Guides only. Takes must stay unreadable.
+create policy "vibechant read guides" on storage.objects
+  for select to public
   using (bucket_id = 'guides');
 ```
 
-4. **Project Settings, API**: copy the project URL and the anon key into
-   `config.js`, then push.
+`to public` means any role, which covers the newer `sb_publishable_` keys where
+`to anon` does not bind. Policies name their bucket as a plain string, so it does
+not matter whether they or the buckets come first.
 
-Once the guides are recorded, drop the two `guides` write policies. Guide mode
-is only a URL fragment, so anyone who reads the page source could otherwise
-overwrite a guide:
+4. **Project Settings, API**: copy the project URL and the publishable key into
+   `config.js`, then push. Never the `service_role` key: that one bypasses every
+   policy.
+
+Once the guides are in, narrow the write policies to `takes` alone. Guide mode is
+only a URL fragment, so anyone reading the page source could otherwise replace a
+guide:
 
 ```sql
-drop policy "anon can add guides" on storage.objects;
-drop policy "anon can replace guides" on storage.objects;
+alter policy "vibechant write"   on storage.objects with check (bucket_id = 'takes');
+alter policy "vibechant replace" on storage.objects using (bucket_id = 'takes')
+                                                   with check (bucket_id = 'takes');
 ```
 
 ## What lands in the bucket
 
 ```
-takes/beep/c1/n8fk2p1a.webm        one chant, one fan
-takes/beep/_singers/n8fk2p1a.json  {handle, at, kept}
-guides/beep/c1.webm                your guide for that chant
+takes/beep/b7/n8fk2p1a-1.webm           one block, one fan, first attempt
+takes/beep/_singers/n8fk2p1a-<ms>.json  {handle, at, kept}
+guides/beep/b7.webm                     your guide for that block
 ```
 
-`c1`..`c15` are the chant ids in `songs/beep.json`, ordered shortest first.
+`b1`..`b21` are the block ids in `songs/beep.json`, in song order. Where a fan
+has more than one attempt at a block, the highest number is the one they meant.
+
+**Nothing may read the `takes` bucket**, which is also why nothing may overwrite
+in it: replacing a file means first finding it. So every upload writes to a path
+no file has occupied before and the page remembers what already went. Pressing
+upload twice is harmless, and a redo after an upload lands as a second file
+rather than a refusal.
+
+Do not add a read policy on `takes` to make overwriting work. The publishable key
+is in the page source, so a read policy would let anyone list and download every
+fan's recording.
+
+The consent line promises recordings are deleted once the project is finished, so
+clear the `takes` bucket when the video is out.
 
 ## Sending takes in
 
