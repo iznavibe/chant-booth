@@ -191,6 +191,14 @@ file landed at the size the bucket claimed, and gathers the handles into
 `credits.txt`. With `--delete` it clears a file only after that check passed, so
 a failed download never costs a take.
 
+Add `--wav` (or `--mp3`) to convert as it goes. Browsers record webm/opus on
+Chrome and mp4/aac on Safari, both better than mp3 at the same size but neither
+guaranteed to import into an editor, so this gives one predictable format. It
+takes channel 0 rather than averaging the pair, which is identical where both
+carry the same signal and avoids halving a shout where only one does. That also
+repairs anything recorded before the channel merge went in, which played in one
+ear only.
+
 The service_role key is on the same dashboard page as the publishable one and
 bypasses every policy. Pass it on the command line for the length of one run.
 It must never reach `config.js`, this repo, or anywhere a browser could see it.

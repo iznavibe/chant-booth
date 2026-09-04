@@ -757,8 +757,22 @@ function lift(raw) {
     squash.ratio.value = 8;
     squash.attack.value = 0.003;
     squash.release.value = 0.15;
+    /*
+     * The same signal written to both channels, explicitly.
+     *
+     * A phone mic is one channel, and what happens to it on the way into a
+     * two-channel recording is left to up-mix rules that differ between
+     * browsers. Get it wrong and the file is a shout in the left ear and
+     * silence in the right, which is what happened. Merging one source into
+     * both inputs settles it: identical channels, centred everywhere, and no
+     * rule to depend on.
+     */
     const dest = c.createMediaStreamDestination();
-    src.connect(gain).connect(squash).connect(dest);
+    const both = c.createChannelMerger(2);
+    src.connect(gain).connect(squash);
+    squash.connect(both, 0, 0);
+    squash.connect(both, 0, 1);
+    both.connect(dest);
 
     /*
      * The meter taps the end of the chain, and then runs into a silent sink.
@@ -776,7 +790,7 @@ function lift(raw) {
     mute.gain.value = 0;
     squash.connect(analyser).connect(mute).connect(c.destination);
 
-    chain = { src, gain, squash, dest, analyser, mute };
+    chain = { src, gain, squash, both, dest, analyser, mute };
     return dest.stream;
   } catch (e) {
     // Any browser that will not build the chain records the plain input.

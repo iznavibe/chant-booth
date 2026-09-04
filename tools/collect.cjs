@@ -2,7 +2,8 @@
  * Pull the takes out of Supabase, and optionally clear them out.
  *
  *   SUPABASE_SERVICE_KEY=... node tools/collect.cjs beep
- *   SUPABASE_SERVICE_KEY=... node tools/collect.cjs beep --delete
+ *   SUPABASE_SERVICE_KEY=... node tools/collect.cjs beep --wav
+ *   SUPABASE_SERVICE_KEY=... node tools/collect.cjs beep --wav --delete
  *
  * Nothing may read the takes bucket, which is what keeps fans' recordings
  * private, and that applies to you as well through the page's key. This uses
@@ -17,12 +18,24 @@
  */
 const fs = require('fs');
 const path = require('path');
+const { execFileSync } = require('child_process');
 
 const URL_BASE = 'https://mhquiiaivhwhwsjywzmo.supabase.co';
 const KEY = process.env.SUPABASE_SERVICE_KEY;
 const song = process.argv[2] || 'beep';
 const bucket = process.env.BUCKET || 'takes';
 const wipe = process.argv.includes('--delete');
+/*
+ * What the browser records is not what an editor wants to open.
+ *
+ * Chrome writes webm/opus and Safari mp4/aac, both of which are better than mp3
+ * at the same size and neither of which every editor will import. Converting on
+ * the way out gives one predictable format, and forcing mono while we are here
+ * repairs anything recorded before the channels were merged, which played in
+ * one ear only.
+ */
+const wav = process.argv.includes('--wav');
+const mp3 = process.argv.includes('--mp3');
 const out = path.join('collected', song);
 
 if (!KEY) {
@@ -67,6 +80,25 @@ async function download(objectPath, to) {
   return bytes.length;
 }
 
+/** One predictable mono file per take, next to the original. */
+function convert(from) {
+  const to = from.replace(/\.[^.]+$/, wav ? '.wav' : '.mp3');
+  // Take the first channel rather than averaging the two. Where both carry the
+  // same signal that is identical, and where only one does, averaging would
+  // halve a shout that is already quiet.
+  const args = ['-y', '-loglevel', 'error', '-i', from, '-af', 'pan=mono|c0=c0'];
+  if (wav) args.push('-c:a', 'pcm_s16le', '-ar', '48000');
+  else args.push('-c:a', 'libmp3lame', '-b:a', '192k');
+  args.push(to);
+  try {
+    execFileSync('ffmpeg', args, { stdio: 'pipe' });
+    fs.unlinkSync(from);
+  } catch (e) {
+    console.log(`
+  could not convert ${path.basename(from)}: is ffmpeg on PATH?`);
+  }
+}
+
 async function remove(paths) {
   const res = await fetch(`${URL_BASE}/storage/v1/object/${bucket}`, {
     method: 'DELETE',
@@ -92,6 +124,7 @@ async function remove(paths) {
       // Only count it collected once it is on disk at the size the bucket said.
       if (f.size && n !== f.size) throw new Error(`${n} bytes, expected ${f.size}`);
       bytes += n;
+      if ((wav || mp3) && /\.(webm|mp4|m4a|aac|ogg)$/i.test(to)) convert(to);
       done.push(f.path);
       process.stdout.write('.');
     } catch (e) {
@@ -114,6 +147,8 @@ async function remove(paths) {
     fs.writeFileSync(path.join(out, 'credits.txt'), names.join('\n') + '\n');
     console.log(`${names.length} named singers, written to ${out}/credits.txt`);
   }
+
+  if (wav || mp3) console.log(`converted to ${wav ? 'wav' : 'mp3'}, mono`);
 
   if (!wipe) {
     console.log('\nNothing deleted. Add --delete to clear them from the bucket.');
