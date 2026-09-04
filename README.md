@@ -5,6 +5,13 @@ back already the right length and already lined up.
 
 Live at `https://iznavibe.github.io/chant-booth/`
 
+The unit is a **block**: one screenful of the finished video, six to ten seconds,
+and the same span a guide clip would naturally be cut to. Every block containing
+a fanchant is recorded, none are reused between similar chants, and both rows
+sweep in karaoke, the original and its romaji, exactly as they do in the video.
+Only the bold words are the fan's to shout; the rest is there so they know where
+they are.
+
 - Fans: `.../?song=beep`
 - You, recording the guides: `.../?song=beep#guide`
 
@@ -124,13 +131,29 @@ guides/beep/c1.webm                your guide for that chant
 
 `c1`..`c15` are the chant ids in `songs/beep.json`, ordered shortest first.
 
+## The guides
+
+You are cutting these from izna's own fanchant videos, so guide mode takes a file
+as well as a recording:
+
+```
+?song=beep#guide
+```
+
+Each block shows the exact song time it starts at, so a clip can be cut to match.
+"Upload a clip" stores it as that block's guide; fans then hear it on Listen with
+the words sweeping over it. Audio or video, up to 25MB, stored as it arrives.
+
 ## Adding another song
 
-Drop a `songs/<name>.json` next to `beep.json` and link `?song=<name>`. The
-shape is one object with `title`, `artist` and `chants`; each chant carries an
-`id`, the Korean `kr`, the `ro` romanisation, `dur` in seconds, how many times
-it `count`s in the song, and `w`, the per-word timings that drive the sweep.
-These are generated from the VibeSub project file, not written by hand.
+```
+node tools/build-song.cjs <project.vibelyric> <name> "<Title>"
+```
+
+Reads a VibeSub project, keeps the blocks containing fanchants, and writes
+`songs/<name>.json`. Timings are copied out untouched: `at` is the block's
+absolute second in the song, and every word's `t` is relative to the block, so a
+finished take drops back exactly where it came from. Link it as `?song=<name>`.
 
 ## Local testing
 

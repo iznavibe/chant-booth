@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Chant Booth</title>
-<meta name="description" content="Record the izna fanchant one shout at a time.">
+<meta name="description" content="Record the izna fanchant a block at a time.">
 <meta name="theme-color" content="#fd538f">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>🩷</text></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -166,16 +166,25 @@
     text-align: center;
     box-shadow: var(--shadow);
   }
-  .chant {
-    font-size: clamp(1.5rem, 7vw, 2.1rem);
-    font-weight: 400;
-    line-height: 1.45;
-    margin: 14px 0 8px;
-    word-break: keep-all;
-  }
-  .chant .w { color: var(--muted); transition: color .08s linear; }
-  .chant .w.lit { color: var(--pink); }
-  .romaji { font-size: .95rem; color: var(--ink-soft); line-height: 1.5; word-break: break-word; }
+  /* A block as it reads in the video: the original, its romaji underneath,
+     and the shouted parts standing out from the sung ones. */
+  .block { margin: 16px 0 4px; display: flex; flex-direction: column; gap: 10px; }
+  .ln { display: flex; flex-direction: column; gap: 1px; }
+  .kr { font-size: clamp(1.05rem, 4.4vw, 1.35rem); line-height: 1.4; word-break: keep-all; }
+  .ro { font-size: clamp(.72rem, 3vw, .85rem); line-height: 1.35; word-break: break-word; }
+
+  .w { color: var(--muted); transition: color .1s linear; }
+  .ro .w { color: var(--muted); opacity: .72; }
+
+  /* The words to shout, waiting and then arriving. */
+  .w.c { color: var(--ink-soft); font-weight: 700; }
+  .ro .w.c { color: var(--ink-soft); opacity: 1; font-weight: 700; }
+  .w.lit { color: var(--pink); }
+  .ro .w.lit { color: var(--pink); }
+  .w.c.lit { color: var(--pink); text-shadow: 0 0 18px var(--pink-soft); }
+
+  .legend { font-size: .78rem; color: var(--muted); margin-top: 2px; }
+  .legend b { color: var(--ink-soft); }
 
   .meter { height: 8px; border-radius: 99px; background: var(--sunk); overflow: hidden; margin-top: 18px; }
   .meter i { display: block; height: 100%; width: 0; background: var(--pink); border-radius: 99px; }
@@ -289,7 +298,7 @@
       <h2>Before you start</h2>
       <ol class="steps">
         <li>Somewhere quiet-ish. A phone held a hand's width away is perfect.</li>
-        <li>You'll hear the chant, then a 3-2-1 count, then you shout.</li>
+        <li>You'll hear the block, then a 3-2-1 count, then you shout the bold bits.</li>
         <li>No music plays while recording, just your voice. Headphones optional.</li>
         <li>Redo any take as many times as you like.</li>
       </ol>
@@ -310,8 +319,8 @@
 
     <div class="stage" id="stage" style="margin-top:14px">
       <span class="badge" id="chant-badge"></span>
-      <p class="chant" id="chant-kr"></p>
-      <p class="romaji" id="chant-ro"></p>
+      <div class="block" id="block"></div>
+      <p class="legend"><b>Bold</b> is yours to shout. The rest is izna.</p>
       <div class="lead" id="lead"><b id="lead-bar"></b></div>
       <div class="meter"><i id="meter-fill"></i></div>
       <div class="level" id="level" hidden><i id="level-bar"></i></div>
@@ -323,6 +332,15 @@
       <div class="row">
         <button class="ghost" id="btn-listen">Listen</button>
         <button class="primary" id="btn-record">Record</button>
+      </div>
+      <div class="row" id="guide-upload" hidden>
+        <label class="ghost" for="guide-file"
+               style="text-align:center;border-radius:999px;padding:12px 22px;
+                      border:1px solid var(--edge);font-family:var(--display);
+                      font-weight:600;cursor:pointer">
+          Upload a clip
+          <input id="guide-file" type="file" accept="audio/*,video/*" hidden>
+        </label>
       </div>
       <div class="row" id="after" hidden>
         <button class="ghost" id="btn-play">Play mine</button>
@@ -357,8 +375,9 @@
 /* ------------------------------------------------------------------ *
  * Chant Booth
  *
- * A fan records the fanchant one shout at a time, so what comes back is
- * already the right length and already lined up. Everything about the design
+ * A fan records the fanchant a block at a time, a block being one screenful of
+ * the finished video, so what comes back is already the right length and already
+ * lined up with where it came from. Everything about the design
  * follows from one decision: the song never plays while the mic is open.
  * That keeps the backing track out of the recording, sidesteps iOS ducking
  * playback the moment a recording starts, and means headphones are optional,
@@ -736,11 +755,55 @@ async function prepare(src) {
 
 /* ---------------- the words lighting up ---------------- */
 
-function paintChant(c) {
-  $('chant-kr').innerHTML = c.w.map((w) => `<span class="w">${esc(w.k)}</span>`).join(' ');
-  $('chant-ro').textContent = c.ro;
+/**
+ * Draw a block, and remember which node holds which word.
+ *
+ * Both rows are swept, the original and its romaji, the way they are in the
+ * video. The words are kept in one flat list beside a flat list of nodes so the
+ * sweep never has to walk the structure again, forty times a second.
+ */
+let flatWords = [];
+let flatNodes = [];
+
+function paintChant(b) {
+  flatWords = [];
+  const rows = [];
+  for (const line of b.lines) {
+    const kr = [];
+    const ro = [];
+    for (const w of line.w) {
+      const i = flatWords.length;
+      flatWords.push(w);
+      const cls = 'w' + (w.c ? ' c' : '');
+      kr.push(`<span class="${cls}" data-i="${i}">${esc(w.k)}</span>`);
+      if (w.r) ro.push(`<span class="${cls}" data-i="${i}">${esc(w.r)}</span>`);
+    }
+    rows.push(
+      `<div class="ln"><p class="kr">${kr.join(' ')}</p>` +
+      (ro.length ? `<p class="ro">${ro.join(' ')}</p>` : '') + '</div>'
+    );
+  }
+  $('block').innerHTML = rows.join('');
+
+  // Every node that shows a given word, so both rows light together.
+  flatNodes = flatWords.map(() => []);
+  $('block').querySelectorAll('.w').forEach((n) => flatNodes[+n.dataset.i].push(n));
+
+  const shouts = flatWords.filter((w) => w.c).length;
   $('chant-badge').textContent =
-    `${at + 1} of ${CHANTS.length}` + (c.count > 1 ? ` · ${c.count}x in the song` : '');
+    `${at + 1} of ${CHANTS.length} · at ${fmt(b.at)} · ${shouts} to shout`;
+}
+
+/** What a block asks you to shout, for a list where the block is not on screen. */
+function shoutsIn(b) {
+  return b.lines.flatMap((l) => l.w).filter((w) => w.c).map((w) => w.k).join(' ');
+}
+
+/** m:ss, so a block can be found in the song. */
+function fmt(sec) {
+  const m = Math.floor(sec / 60);
+  const s = Math.floor(sec % 60);
+  return `${m}:${String(s).padStart(2, '0')}`;
 }
 
 /**
@@ -750,7 +813,6 @@ function paintChant(c) {
  */
 function sweep(c, onDone, opts) {
   const live = !!(opts && opts.live);
-  const words = [...$('chant-kr').querySelectorAll('.w')];
   const total = PRE + c.dur + TAIL;
   const t0 = performance.now();
   let entered = false;
@@ -774,9 +836,9 @@ function sweep(c, onDone, opts) {
       setStatus('Shout!', true);
     }
 
-    words.forEach((node, i) => {
-      const w = c.w[i];
-      node.classList.toggle('lit', !!w && el >= PRE + w.t && el < PRE + w.t + w.d + 0.12);
+    flatWords.forEach((w, i) => {
+      const on = el >= PRE + w.t && el < PRE + w.t + w.d + 0.12;
+      flatNodes[i].forEach((n) => n.classList.toggle('lit', on));
     });
     $('meter-fill').style.width = Math.min(100, (el / total) * 100) + '%';
 
@@ -788,7 +850,7 @@ function sweep(c, onDone, opts) {
 
     if (el < total) requestAnimationFrame(frame);
     else {
-      words.forEach((n) => n.classList.remove('lit'));
+      flatNodes.forEach((ns) => ns.forEach((n) => n.classList.remove('lit')));
       $('meter-fill').style.width = '0%';
       $('lead').classList.remove('on');
       $('level').hidden = true;
@@ -869,9 +931,10 @@ async function listen() {
 
   setStatus('Rhythm only, no voice guide yet…');
   const ctx = audio();
-  // The clicks sit where the words will, which is after the lead-in.
+  // Clicks only on the words to shout: the sung lines are not theirs to hit.
   const t0 = ctx.currentTime + 0.25 + PRE;
-  c.w.forEach((w, i) => click(t0 + w.t, i === 0));
+  let first = true;
+  flatWords.filter((w) => w.c).forEach((w) => { click(t0 + w.t, first); first = false; });
   setTimeout(() => sweep(c, done), 250);
 }
 
@@ -1032,6 +1095,45 @@ async function save(c, blob, mime) {
   }
 }
 
+/**
+ * Put a cut of izna's own fanchant video in as the guide.
+ *
+ * Better than anything that can be shouted into a phone, and the point of a
+ * guide is to teach the words, so it should be the real thing wherever there is
+ * one. The file is stored as it arrives: browsers play the common video
+ * containers as audio quite happily, and re-encoding here would only lose
+ * quality for no gain.
+ */
+async function uploadGuide(e) {
+  const file = e.target.files && e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  const c = CHANTS[at];
+
+  if (!CAN_UPLOAD) {
+    note('Storage is not set up yet, so guides cannot be saved.');
+    return;
+  }
+  if (file.size > 25 * 1024 * 1024) {
+    note('That file is over 25MB. Trim it to just this block and try again.');
+    return;
+  }
+
+  setStatus('Uploading the guide…');
+  try {
+    await put('guides', `${SONG}/${c.id}.webm`, file, file.type || 'audio/webm');
+    const old = guides.get(c.id);
+    if (old) URL.revokeObjectURL(old);
+    guides.set(c.id, URL.createObjectURL(file));
+    $('btn-listen').textContent = 'Listen';
+    setStatus('Guide in. Press Listen to check it.');
+    note(`Saved ${Math.round(file.size / 1024)}KB for block ${at + 1}.`);
+  } catch (err) {
+    setStatus('That did not upload.');
+    note('The guide did not upload: ' + err.message);
+  }
+}
+
 /* ---------------- moving through the list ---------------- */
 
 function pips() {
@@ -1077,7 +1179,8 @@ function finish() {
     : 'Uploading is not set up yet, so these takes live only on this phone.';
   $('done-list').innerHTML = CHANTS
     .map((c) => `<div class="li"><span class="tick">${takes.has(c.id) ? '✓' : '·'}</span>` +
-      `<span class="t">${esc(c.kr)}</span></div>`)
+      `<span class="t">${esc(shoutsIn(c))}</span>` +
+      `<span class="muted">${fmt(c.at)}</span></div>`)
     .join('');
   show('done');
 }
@@ -1130,12 +1233,15 @@ $('btn-back').addEventListener('click', () => { show('rec'); goto(0); });
   $('lede').textContent = GUIDE
     ? 'Shout each chant once so every naya knows what they are copying. These are saved ' +
       'as the guide track, not as a crowd take.'
-    : `Record the ${song.title} fanchant one shout at a time. ${CHANTS.length} of them, ` +
-      'most under a second. Your takes get layered with everyone else’s into the lyric video.';
+    : `Record the ${song.title} fanchant a block at a time. ${CHANTS.length} of them, ` +
+      'a few seconds each. Only the bold words are yours to shout. Your takes get ' +
+      'layered with everyone else’s into the crowd on the lyric video.';
 
   if (GUIDE) {
     $('btn-record').textContent = 'Record guide';
     $('btn-again').textContent = 'Redo guide';
+    $('guide-upload').hidden = false;
+    $('guide-file').addEventListener('change', uploadGuide);
   }
 
   if (!window.MediaRecorder || !navigator.mediaDevices) {
