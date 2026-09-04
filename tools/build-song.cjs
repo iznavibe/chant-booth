@@ -8,10 +8,11 @@
  * whole block also keeps the spacing between consecutive chants, which
  * recording them one at a time throws away.
  *
- * Within a block only the lines carrying a fanchant are kept. The purely sung
- * lines are izna's and there is nothing for anyone to record against them, so
- * they would be clutter on a phone. Where a dropped line leaves a gap the gap
- * stays, because the timings are absolute: the wait is part of the chant.
+ * A block is trimmed to the run from its first chanting line to its last.
+ * Leading and trailing sung lines are izna's alone and only crowd a phone
+ * screen, but a sung line *between* two chants is kept: it is what a fan counts
+ * through while waiting for their next entry, and without it the gap in the
+ * sweep looks like a mistake.
  *
  * Timings are copied out untouched, absolute seconds for the block and relative
  * for every word inside it, so a finished take drops back onto the timeline
@@ -74,17 +75,21 @@ for (const idx of blocks.values()) {
   const flags = chantFlags(flat);
   let seen = 0;
 
-  const raw = idx.map((i) => {
+  const all = idx.map((i) => {
     const src = p.lines[i].syllables;
     const mine = flags.slice(seen, seen + src.length);
     seen += src.length;
     return { i, src, mine };
-  }).filter((l) => l.mine.some(Boolean));
+  });
 
-  if (!raw.length) continue;
+  const first = all.findIndex((l) => l.mine.some(Boolean));
+  if (first === -1) continue;
+  let last = first;
+  all.forEach((l, n) => { if (l.mine.some(Boolean)) last = n; });
+  const raw = all.slice(first, last + 1);
 
-  // The window covers the kept lines only, so a block that chants at its end
-  // does not open with several silent seconds of somebody else's verse.
+  // The window covers the kept run only, so a block that chants at its end does
+  // not open with several silent seconds of somebody else's verse.
   const start = Math.min(...raw.map((l) => l.src[0].start));
   const end = Math.max(...raw.map((l) => l.src[l.src.length - 1].end));
 

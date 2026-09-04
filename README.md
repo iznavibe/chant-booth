@@ -9,9 +9,11 @@ The unit is a **block**: one screenful of the finished video, and the same span 
 guide clip would naturally be cut to. Every block containing a fanchant is
 recorded and none are reused between similar chants.
 
-Within a block only the lines carrying a chant are kept, since a purely sung line
-is izna's and has nothing to record against it. Where dropping one leaves a gap
-the gap stays: timings are absolute, and the wait is part of the chant.
+A block is trimmed to the run from its first chanting line to its last. Leading
+and trailing sung lines are izna's alone and only crowd a phone screen, but a
+sung line *between* two chants is kept: it is what a fan counts through while
+waiting for their next entry, and without it the gap in the sweep looks like a
+mistake. Timings stay absolute either way, so the wait is real.
 
 Both rows fill in karaoke, the original and its romaji together, with a hard
 edge running through the letters over exactly the time each word is held. izna's
