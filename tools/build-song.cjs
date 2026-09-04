@@ -91,10 +91,22 @@ for (const idx of blocks.values()) {
     return { i, src, mine };
   });
 
-  const first = all.findIndex((l) => l.mine.some(Boolean));
+  let first = all.findIndex((l) => l.mine.some(Boolean));
   if (first === -1) continue;
   let last = first;
   all.forEach((l, n) => { if (l.mine.some(Boolean)) last = n; });
+
+  /*
+   * A very short run gets the lines before it back, up to three in all.
+   *
+   * "Y O U" is three words over half a second. On its own there is nothing to
+   * follow into it and no way to tell it apart from the other short answers in
+   * the song, so the two lines it answers come back. Only ever within the same
+   * block, and only where the run is too brief to orient by.
+   */
+  const span = () => all[last].src[all[last].src.length - 1].end - all[first].src[0].start;
+  while (first > 0 && last - first + 1 < 3 && span() < 4) first -= 1;
+
   const raw = all.slice(first, last + 1);
 
   // The window covers the kept run only, so a block that chants at its end does

@@ -1065,13 +1065,11 @@ async function listen() {
     return;
   }
 
-  setStatus('Rhythm only, no voice guide yet…');
-  const ctx = audio();
-  // Clicks only on the words to shout: the sung lines are not theirs to hit.
-  const t0 = ctx.currentTime + 0.25 + PRE;
-  let first = true;
-  flatWords.filter((w) => w.c).forEach((w) => { click(t0 + w.t, first); first = false; });
-  setTimeout(() => sweep(c, done), 250);
+  // No guide recorded yet, so the words are the guide. Nothing is played over
+  // them: a click on every chant word turned out to be a distraction from the
+  // thing it was pointing at.
+  setStatus('No voice guide yet. Follow the words.');
+  sweep(c, done);
 }
 
 async function record() {
