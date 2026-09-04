@@ -352,7 +352,23 @@ const GUIDE = /guide/i.test(location.hash);
 
 const COUNT_IN = 3;   // clicks before the shout
 const BEAT = 0.6;     // seconds between count-in clicks
-const TAIL = 0.7;     // extra recording after the last word, for the shout to land
+
+/*
+ * Every clip is PRE + the chant + TAIL, always, and recording covers the whole
+ * of it.
+ *
+ * PRE is the three dots: a breath between the count and the first word, so
+ * nobody is thrown straight in, and room at the head of the clip so the very
+ * start of a shout is never clipped off. It is silent on purpose. The count-in
+ * clicks already gave the tempo, and anything sounding while the mic is open
+ * would end up in the recording.
+ *
+ * TAIL is the same courtesy at the other end. Both are fixed, so the words sit
+ * at the same offset in every take of every chant and the whole pile still
+ * drops onto the timeline at one offset.
+ */
+const PRE = 1.0;
+const TAIL = 1.5;
 
 const $ = (id) => document.getElementById(id);
 const screens = { intro: $('screen-intro'), rec: $('screen-rec'), done: $('screen-done') };
@@ -495,25 +511,42 @@ function paintChant(c) {
   $('chant-kr').innerHTML = c.w.map((w) => `<span class="w">${esc(w.k)}</span>`).join(' ');
   $('chant-ro').textContent = c.ro;
   $('chant-badge').textContent =
-    `${at + 1} of ${CHANTS.length} · ${c.dur}s` + (c.count > 1 ? ` · ${c.count}x in the song` : '');
+    `${at + 1} of ${CHANTS.length}` + (c.count > 1 ? ` · ${c.count}x in the song` : '');
 }
 
-/** Light each word at its own moment and fill the meter. */
+/**
+ * Run one clip: the three lead-in dots, then each word lighting at its own
+ * moment, then the tail. Drives the meter across the whole thing, so what is
+ * on screen is exactly what is being recorded.
+ */
 function sweep(c, onDone) {
   const words = [...$('chant-kr').querySelectorAll('.w')];
-  const total = c.dur + TAIL;
+  const total = PRE + c.dur + TAIL;
   const t0 = performance.now();
+  let dots = -1;
   (function frame() {
     const el = (performance.now() - t0) / 1000;
+
+    if (el < PRE) {
+      // Three dots filling in, counting the last beat before the words.
+      const n = Math.min(3, Math.floor(el / (PRE / 3)) + 1);
+      if (n !== dots) { dots = n; $('countdown').textContent = '·'.repeat(n); }
+    } else if (dots !== 0) {
+      dots = 0;
+      $('countdown').textContent = '';
+    }
+
     words.forEach((node, i) => {
       const w = c.w[i];
-      node.classList.toggle('lit', !!w && el >= w.t && el < w.t + w.d + 0.12);
+      node.classList.toggle('lit', !!w && el >= PRE + w.t && el < PRE + w.t + w.d + 0.12);
     });
     $('meter-fill').style.width = Math.min(100, (el / total) * 100) + '%';
+
     if (el < total) requestAnimationFrame(frame);
     else {
       words.forEach((n) => n.classList.remove('lit'));
       $('meter-fill').style.width = '0%';
+      $('countdown').textContent = '';
       onDone && onDone();
     }
   })();
@@ -589,7 +622,8 @@ async function listen() {
 
   setStatus('Rhythm only, no voice guide yet…');
   const ctx = audio();
-  const t0 = ctx.currentTime + 0.25;
+  // The clicks sit where the words will, which is after the lead-in.
+  const t0 = ctx.currentTime + 0.25 + PRE;
   c.w.forEach((w, i) => click(t0 + w.t, i === 0));
   setTimeout(() => sweep(c, done), 250);
 }
@@ -637,8 +671,11 @@ async function record() {
       buttons(true);
       save(c, blob, rec.mimeType || MIME);
     };
+    // Rolling before the dots and still rolling through the tail, so the clip
+    // has room at both ends and nothing gets clipped.
     rec.start();
-    setStatus('Shout!', true);
+    setStatus('Ready…', true);
+    setTimeout(() => busy && setStatus('Shout!', true), PRE * 1000);
     sweep(c, () => rec.state !== 'inactive' && rec.stop());
   });
 }

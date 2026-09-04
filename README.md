@@ -16,11 +16,19 @@ and means headphones are optional, which is the difference between people taking
 part and not.
 
 What a fan hears instead is your guide voice with the words sweeping in time,
-then a 3-2-1 count-in. Recording runs for the chant's own length plus 0.7s and
-starts at a fixed offset from the count, so every take of a given chant is the
-same length and lands in the same place on the timeline. Do not tighten them up
-afterwards: a crowd chanting in perfect lockstep sounds wrong, and the natural
-spread between takes is the sound you want.
+then a 3-2-1 count-in, then three dots.
+
+Every clip is the same shape: **1s lead-in, the chant, 1.5s tail**, with the mic
+open for all of it. The dots are that lead-in. They give a breath between the
+count and the first word so nobody is thrown straight in, and they leave room at
+the head of the clip so the start of a shout is never clipped. They are silent
+on purpose, because anything sounding while the mic is open ends up in the
+recording.
+
+Because the lead-in is fixed, the first word sits exactly 1s into every take of
+every chant, so the whole pile drops onto the timeline at one offset. Do not
+tighten them up afterwards: a crowd chanting in perfect lockstep sounds wrong,
+and the natural spread between takes is the sound you want.
 
 Chant timings come from the finished lyric video, exported out of VibeSub.
 
