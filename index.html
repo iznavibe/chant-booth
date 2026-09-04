@@ -415,6 +415,7 @@
         <button class="ghost grow" id="btn-play" aria-label="Play my take">▶</button>
         <button class="ghost icon" id="btn-next" aria-label="Next block">›</button>
       </div>
+      <button class="ghost full" id="btn-done">My takes</button>
       <div class="row" id="guide-upload" hidden>
         <label class="ghost" for="guide-file"
                style="text-align:center;border-radius:999px;padding:12px 22px;
@@ -431,10 +432,7 @@
 
   <section id="screen-done" hidden>
     <div class="card" style="display:flex;flex-direction:column;gap:16px">
-      <div>
-        <p class="eyebrow">Your takes</p>
-        <h2 id="done-title">Nearly there</h2>
-      </div>
+      <h2 id="done-title">Your takes</h2>
       <div class="tally"><b id="tally-n">0</b><span class="muted" id="tally-label"></span></div>
       <div class="tabs" id="done-tabs"></div>
       <p class="muted">Tap any one to hear it back or record it again.</p>
@@ -1225,7 +1223,7 @@ async function record() {
  * left live by accident.
  */
 function buttons(on) {
-  ['btn-listen', 'btn-record', 'btn-prev', 'btn-next'].forEach((id) => {
+  ['btn-listen', 'btn-record', 'btn-prev', 'btn-next', 'btn-done'].forEach((id) => {
     $(id).disabled = !on;
   });
   $('btn-play').disabled = !on || !takes.has(CHANTS[at].id);
@@ -1334,10 +1332,11 @@ function step(by) {
 
 function finish() {
   stopPlaying();
+  $('btn-done').textContent = 'My takes';
   const n = takes.size;
   $('tally-n').textContent = n;
   $('tally-label').textContent = `of ${CHANTS.length} recorded`;
-  $('done-title').textContent = n === CHANTS.length ? 'All of them, done' : 'Nearly there';
+  $('done-title').textContent = 'Your takes';
   $('done-tabs').innerHTML = CHANTS
     .map((c, i) =>
       `<button class="tab ${takes.has(c.id) ? 'done' : ''}" data-i="${i}">${i + 1}</button>`)
@@ -1434,6 +1433,7 @@ $('begin').addEventListener('click', () => {
 $('btn-listen').addEventListener('click', listen);
 $('btn-record').addEventListener('click', record);
 $('btn-prev').addEventListener('click', () => step(-1));
+$('btn-done').addEventListener('click', () => { if (!busy) finish(); });
 $('btn-next').addEventListener('click', () => step(1));
 $('btn-play').addEventListener('click', async () => {
   if (busy) return;
@@ -1461,6 +1461,8 @@ $('sheet-retake').addEventListener('click', () => {
   closeSheet();
   show('rec');
   goto(i);
+  // Arrived from the list, so say so on the way out.
+  $('btn-done').textContent = 'Back to my takes';
 });
 $('sheet-close').addEventListener('click', closeSheet);
 $('sheet').addEventListener('click', (e) => { if (e.target === $('sheet')) closeSheet(); });
