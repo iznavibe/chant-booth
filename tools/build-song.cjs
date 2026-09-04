@@ -4,14 +4,18 @@
  *   node tools/build-song.cjs <project.vibelyric> <name> "<Title>"
  *
  * The unit is a block, not a chant. A block is one screenful in the finished
- * video, six to ten seconds, and it is what a guide clip would naturally be cut
- * to. Recording a whole block also keeps the spacing between consecutive
- * chants, which recording them one at a time throws away.
+ * video, and it is what a guide clip would naturally be cut to. Recording a
+ * whole block also keeps the spacing between consecutive chants, which
+ * recording them one at a time throws away.
  *
- * Only blocks containing a fanchant are kept. Timings are copied out
- * untouched, absolute seconds for the block and relative for every word inside
- * it, so a finished take drops back onto the timeline exactly where it came
- * from.
+ * Within a block only the lines carrying a fanchant are kept. The purely sung
+ * lines are izna's and there is nothing for anyone to record against them, so
+ * they would be clutter on a phone. Where a dropped line leaves a gap the gap
+ * stays, because the timings are absolute: the wait is part of the chant.
+ *
+ * Timings are copied out untouched, absolute seconds for the block and relative
+ * for every word inside it, so a finished take drops back onto the timeline
+ * exactly where it came from.
  */
 const fs = require('fs');
 
@@ -64,20 +68,28 @@ for (const idx of blocks.values()) {
   const flat = idx.flatMap((i) => p.lines[i].syllables.map((s) => s.text));
   if (!flat.some((t) => t.includes('('))) continue;
 
-  const start = Math.min(...idx.map((i) => p.lines[i].syllables[0].start));
-  const end = Math.max(...idx.map((i) => p.lines[i].syllables.slice(-1)[0].end));
-
   // Brackets run across lines: the intro chant opens on the first line of its
   // block and closes on the third. Flags are worked out over the whole block
   // and handed back per line, or the middle of a chant reads as ordinary lyric.
   const flags = chantFlags(flat);
   let seen = 0;
 
-  const lines = idx.map((i) => {
+  const raw = idx.map((i) => {
     const src = p.lines[i].syllables;
-    const ro = (p.romaji && p.romaji.lines[i] && p.romaji.lines[i].syllables) || [];
     const mine = flags.slice(seen, seen + src.length);
     seen += src.length;
+    return { i, src, mine };
+  }).filter((l) => l.mine.some(Boolean));
+
+  if (!raw.length) continue;
+
+  // The window covers the kept lines only, so a block that chants at its end
+  // does not open with several silent seconds of somebody else's verse.
+  const start = Math.min(...raw.map((l) => l.src[0].start));
+  const end = Math.max(...raw.map((l) => l.src[l.src.length - 1].end));
+
+  const lines = raw.map(({ i, src, mine }) => {
+    const ro = (p.romaji && p.romaji.lines[i] && p.romaji.lines[i].syllables) || [];
     return {
       w: src.map((s, j) => ({
         k: strip(s.text).trim(),

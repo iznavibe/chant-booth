@@ -5,12 +5,18 @@ back already the right length and already lined up.
 
 Live at `https://iznavibe.github.io/chant-booth/`
 
-The unit is a **block**: one screenful of the finished video, six to ten seconds,
-and the same span a guide clip would naturally be cut to. Every block containing
-a fanchant is recorded, none are reused between similar chants, and both rows
-sweep in karaoke, the original and its romaji, exactly as they do in the video.
-Only the bold words are the fan's to shout; the rest is there so they know where
-they are.
+The unit is a **block**: one screenful of the finished video, and the same span a
+guide clip would naturally be cut to. Every block containing a fanchant is
+recorded and none are reused between similar chants.
+
+Within a block only the lines carrying a chant are kept, since a purely sung line
+is izna's and has nothing to record against it. Where dropping one leaves a gap
+the gap stays: timings are absolute, and the wait is part of the chant.
+
+Both rows fill in karaoke, the original and its romaji together, with a hard
+edge running through the letters over exactly the time each word is held. izna's
+words fill purple, the fan's fill izna pink and stand out bold, so what is theirs
+to shout is obvious without reading a legend.
 
 - Fans: `.../?song=beep`
 - You, recording the guides: `.../?song=beep#guide`

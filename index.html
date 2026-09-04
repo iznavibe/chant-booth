@@ -173,15 +173,34 @@
   .kr { font-size: clamp(1.05rem, 4.4vw, 1.35rem); line-height: 1.4; word-break: keep-all; }
   .ro { font-size: clamp(.72rem, 3vw, .85rem); line-height: 1.35; word-break: break-word; }
 
-  .w { color: var(--muted); transition: color .1s linear; }
-  .ro .w { color: var(--muted); opacity: .72; }
+  /*
+   * The karaoke fill.
+   *
+   * Each word carries a hard-edged gradient clipped to its own glyphs, and the
+   * sweep moves the edge from 0% to 100% across exactly the time that word is
+   * held. So the colour runs through the letters rather than the word flicking
+   * on and off, and everything already sung stays sung, which is what makes a
+   * line read as flowing.
+   */
+  .w {
+    --p: 0%;
+    --unsung: var(--muted);
+    --sung: var(--purple);
+    background-image: linear-gradient(90deg, var(--sung) var(--p), var(--unsung) var(--p));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    -webkit-text-fill-color: transparent;
+  }
 
-  /* The words to shout, waiting and then arriving. */
-  .w.c { color: var(--ink-soft); font-weight: 700; }
-  .ro .w.c { color: var(--ink-soft); opacity: 1; font-weight: 700; }
-  .w.lit { color: var(--pink); }
-  .ro .w.lit { color: var(--pink); }
-  .w.c.lit { color: var(--pink); text-shadow: 0 0 18px var(--pink-soft); }
+  /* Yours to shout: brighter waiting, and izna pink as it lands. */
+  .w.c { --unsung: var(--ink-soft); --sung: var(--pink); font-weight: 700; }
+
+  .ro .w { opacity: .72; }
+  .ro .w.c { opacity: 1; font-weight: 700; }
+
+  /* The one being sung right now. */
+  .w.now { filter: drop-shadow(0 0 10px var(--pink-soft)); }
 
   .legend { font-size: .78rem; color: var(--muted); margin-top: 2px; }
   .legend b { color: var(--ink-soft); }
@@ -785,13 +804,22 @@ function paintChant(b) {
   }
   $('block').innerHTML = rows.join('');
 
-  // Every node that shows a given word, so both rows light together.
+  // Every node that shows a given word, so both rows fill together.
   flatNodes = flatWords.map(() => []);
   $('block').querySelectorAll('.w').forEach((n) => flatNodes[+n.dataset.i].push(n));
+  clearFill();
 
   const shouts = flatWords.filter((w) => w.c).length;
   $('chant-badge').textContent =
     `${at + 1} of ${CHANTS.length} · at ${fmt(b.at)} · ${shouts} to shout`;
+}
+
+/** Back to unsung, for a block about to be run again. */
+function clearFill() {
+  flatNodes.forEach((ns) => ns.forEach((n) => {
+    n.style.setProperty('--p', '0%');
+    n.classList.remove('now');
+  }));
 }
 
 /** What a block asks you to shout, for a list where the block is not on screen. */
@@ -813,10 +841,13 @@ function fmt(sec) {
  */
 function sweep(c, onDone, opts) {
   const live = !!(opts && opts.live);
+  clearFill();
   const total = PRE + c.dur + TAIL;
   const t0 = performance.now();
   let entered = false;
   let loudest = 0;
+  // Last drawn fill per word, so a frame only touches what moved.
+  const fill = flatWords.map(() => -1);
 
   $('lead').classList.add('on');
   if (live) $('level').hidden = false;
@@ -837,8 +868,16 @@ function sweep(c, onDone, opts) {
     }
 
     flatWords.forEach((w, i) => {
-      const on = el >= PRE + w.t && el < PRE + w.t + w.d + 0.12;
-      flatNodes[i].forEach((n) => n.classList.toggle('lit', on));
+      const from = PRE + w.t;
+      const pct = el <= from ? 0 : el >= from + w.d ? 100 : ((el - from) / w.d) * 100;
+      if (Math.abs(pct - fill[i]) < 0.6 && pct !== 0 && pct !== 100) return;
+      fill[i] = pct;
+      const css = pct.toFixed(1) + '%';
+      const now = w.c && pct > 0 && pct < 100;
+      flatNodes[i].forEach((n) => {
+        n.style.setProperty('--p', css);
+        n.classList.toggle('now', now);
+      });
     });
     $('meter-fill').style.width = Math.min(100, (el / total) * 100) + '%';
 
@@ -850,7 +889,8 @@ function sweep(c, onDone, opts) {
 
     if (el < total) requestAnimationFrame(frame);
     else {
-      flatNodes.forEach((ns) => ns.forEach((n) => n.classList.remove('lit')));
+      // Leave the block sung through rather than snapping back to nothing.
+      flatNodes.forEach((ns) => ns.forEach((n) => n.classList.remove('now')));
       $('meter-fill').style.width = '0%';
       $('lead').classList.remove('on');
       $('level').hidden = true;
