@@ -5,6 +5,13 @@ already the right length and already lined up.
 
 Live at `https://iznavibe.github.io/chant-booth/`
 
+Ten songs. The bare link offers the list; `?song=<name>` goes straight to one:
+`beep` `dumbhot` `headache` `izna` `mammamia` `metronome` `racecar` `rip` `sign`
+`timebomb`. Add `#guide` to record or upload that song's guides.
+
+Takes, guides and the on-device store are all keyed by song, so the ten never
+mix.
+
 The unit is a **block**: one screenful of the finished video, and the same span a
 guide clip would naturally be cut to. Every block containing a fanchant is
 recorded and none are reused between similar chants.
@@ -244,10 +251,11 @@ the words sweeping over it. Audio or video, up to 25MB, stored as it arrives.
 
 ```
 node tools/build-song.cjs <project.vibelyric> <name> "<Title>"
+node tools/build-index.cjs
 ```
 
 Reads a VibeSub project, keeps the blocks containing fanchants, and writes
-`songs/<name>.json`. Timings are copied out untouched: `at` is the block's
+`songs/<name>.json`. The second command rebuilds the list the front page reads. Timings are copied out untouched: `at` is the block's
 absolute second in the song, and every word's `t` is relative to the block, so a
 finished take drops back exactly where it came from. Link it as `?song=<name>`.
 
