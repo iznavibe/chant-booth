@@ -515,7 +515,18 @@ const screens = { intro: $('screen-intro'), rec: $('screen-rec'), done: $('scree
 let CHANTS = [];
 let song = null;
 let at = 0;
-const takes = new Map();     // chantId -> {blob, url, mime}
+const takes = new Map();     // chantId -> {blob, url, mime, n}
+/**
+ * Which takes have already reached the bucket, as `chantId:attempt`.
+ *
+ * Every upload writes to a path no file has occupied before, because takes are
+ * write-only: nothing may read that bucket back, so nothing may overwrite in it
+ * either, since replacing a file means first finding it. Numbering the attempts
+ * and remembering what went keeps every upload a fresh write, makes pressing
+ * upload twice harmless, and leaves a redo after an upload as a second file
+ * rather than a refusal.
+ */
+const uploaded = new Set();
 const guides = new Map();    // chantId -> object URL or null
 let handle = '';
 let busy = false;
@@ -1162,7 +1173,12 @@ async function record() {
 
       const old = takes.get(c.id);
       if (old) URL.revokeObjectURL(old.url);
-      takes.set(c.id, { blob, url: URL.createObjectURL(blob), mime: rec.mimeType || MIME });
+      takes.set(c.id, {
+        blob,
+        url: URL.createObjectURL(blob),
+        mime: rec.mimeType || MIME,
+        n: (old ? old.n : 0) + 1,
+      });
       setStatus('Got it. Have a listen.');
       $('btn-record').textContent = GUIDE ? 'Redo guide' : 'Redo';
       pips();
@@ -1176,7 +1192,7 @@ async function record() {
       // A guide goes up straight away, because there is one of it and the person
       // recording it is the one who wants it there. A fan's takes wait for the
       // upload button at the end.
-      if (GUIDE) save(c, blob, rec.mimeType || MIME);
+      if (GUIDE) saveGuide(c, blob, rec.mimeType || MIME);
     };
 
     // Rolling before the entry and still rolling through the tail, so the clip
@@ -1215,29 +1231,16 @@ function buttons(on) {
  * One file per take, so a redo overwrites just that one and a dropped
  * connection costs a single shout rather than the whole session.
  */
-async function save(c, blob, mime) {
+async function saveGuide(c, blob, mime) {
   if (!CAN_UPLOAD) return;
   try {
-    if (GUIDE) {
-      await put('guides', `${SONG}/${c.id}.webm`, blob, mime);
-      const old = guides.get(c.id);
-      if (old) URL.revokeObjectURL(old);
-      guides.set(c.id, URL.createObjectURL(blob));
-      note('Guide saved. Everyone will hear this when they press Listen.');
-      return;
-    }
-    await put('takes', `${SONG}/${c.id}/${sessionId}.webm`, blob, mime);
-    await put(
-      'takes',
-      `${SONG}/_singers/${sessionId}.json`,
-      new Blob([JSON.stringify({ handle, at: new Date().toISOString(), kept: takes.size })],
-        { type: 'application/json' }),
-      'application/json'
-    );
-    $('save-note').hidden = true;
+    await put('guides', `${SONG}/${c.id}.webm`, blob, mime);
+    const old = guides.get(c.id);
+    if (old) URL.revokeObjectURL(old);
+    guides.set(c.id, URL.createObjectURL(blob));
+    note('Guide saved. Everyone will hear this when they press Guide.');
   } catch (e) {
-    note('Saved on this phone, but the upload did not go through. Keep going, and ' +
-      'tell whoever sent you this link. (' + e.message + ')');
+    note('The guide did not upload: ' + e.message);
   }
 }
 
@@ -1373,14 +1376,25 @@ async function uploadAll() {
     return;
   }
   $('btn-upload').disabled = true;
+  const outstanding = CHANTS.filter((c) => {
+    const t = takes.get(c.id);
+    return t && !uploaded.has(`${c.id}:${t.n}`);
+  });
+
+  if (!outstanding.length) {
+    $('btn-upload').disabled = false;
+    $('upload-note').textContent = `All ${takes.size} already sent. Thank you!`;
+    return;
+  }
+
   let sent = 0;
   let failed = 0;
-  for (const c of CHANTS) {
+  for (const c of outstanding) {
     const t = takes.get(c.id);
-    if (!t) continue;
-    $('upload-note').textContent = `Sending ${sent + failed + 1} of ${takes.size}…`;
+    $('upload-note').textContent = `Sending ${sent + failed + 1} of ${outstanding.length}…`;
     try {
-      await put('takes', `${SONG}/${c.id}/${sessionId}.webm`, t.blob, t.mime);
+      await put('takes', `${SONG}/${c.id}/${sessionId}-${t.n}.webm`, t.blob, t.mime);
+      uploaded.add(`${c.id}:${t.n}`);
       sent += 1;
     } catch (e) {
       failed += 1;
@@ -1389,8 +1403,8 @@ async function uploadAll() {
   try {
     await put(
       'takes',
-      `${SONG}/_singers/${sessionId}.json`,
-      new Blob([JSON.stringify({ handle, at: new Date().toISOString(), kept: sent })],
+      `${SONG}/_singers/${sessionId}-${Date.now()}.json`,
+      new Blob([JSON.stringify({ handle, at: new Date().toISOString(), kept: uploaded.size })],
         { type: 'application/json' }),
       'application/json'
     );
@@ -1399,7 +1413,7 @@ async function uploadAll() {
   $('btn-upload').disabled = false;
   $('upload-note').textContent = failed
     ? `${sent} sent, ${failed} would not go through. Press again to retry those.`
-    : `All ${sent} sent. Thank you!`;
+    : `All ${uploaded.size} sent. Thank you!`;
   if (!failed) $('done-title').textContent = 'Sent. Thank you!';
 }
 
