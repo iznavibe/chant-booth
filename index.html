@@ -199,6 +199,13 @@
   .ro .w { opacity: .72; }
   .ro .w.c { opacity: 1; font-weight: 700; }
 
+  /*
+   * Struck through, as in the video: izna's word that the chant talks over.
+   * The colour has to be named, because the letters themselves are painted by
+   * a clipped gradient and are transparent, so the line would be too.
+   */
+  .w.s { text-decoration: line-through; text-decoration-color: var(--unsung); }
+
   /* The one being sung right now. */
   .w.now { filter: drop-shadow(0 0 10px var(--pink-soft)); }
 
@@ -339,7 +346,7 @@
     <div class="stage" id="stage" style="margin-top:14px">
       <span class="badge" id="chant-badge"></span>
       <div class="block" id="block"></div>
-      <p class="legend"><b>Bold</b> is yours to shout. The rest is izna.</p>
+      <p class="legend" id="legend"><b>Bold</b> is yours to shout. The rest is izna.</p>
       <div class="lead" id="lead"><b id="lead-bar"></b></div>
       <div class="meter"><i id="meter-fill"></i></div>
       <div class="level" id="level" hidden><i id="level-bar"></i></div>
@@ -793,7 +800,7 @@ function paintChant(b) {
     for (const w of line.w) {
       const i = flatWords.length;
       flatWords.push(w);
-      const cls = 'w' + (w.c ? ' c' : '');
+      const cls = 'w' + (w.c ? ' c' : '') + (w.s ? ' s' : '');
       kr.push(`<span class="${cls}" data-i="${i}">${esc(w.k)}</span>`);
       if (w.r) ro.push(`<span class="${cls}" data-i="${i}">${esc(w.r)}</span>`);
     }
@@ -812,6 +819,9 @@ function paintChant(b) {
   const shouts = flatWords.filter((w) => w.c).length;
   $('chant-badge').textContent =
     `${at + 1} of ${CHANTS.length} · at ${fmt(b.at)} · ${shouts} to shout`;
+  $('legend').innerHTML = flatWords.some((w) => w.s)
+    ? '<b>Bold</b> is yours to shout. Crossed out is izna singing under you.'
+    : '<b>Bold</b> is yours to shout. The rest is izna.';
 }
 
 /** Back to unsung, for a block about to be run again. */

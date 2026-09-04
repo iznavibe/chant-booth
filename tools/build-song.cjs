@@ -28,15 +28,25 @@ if (!src || !name) {
 
 const p = JSON.parse(fs.readFileSync(src, 'utf8'));
 
-/** A word is a chant when it sits inside brackets: that is how the video marks them. */
-function chantFlags(texts) {
+/**
+ * Which words are the crowd's.
+ *
+ * The marking that counts is the fanchant colour, the one the fanchant button
+ * paints on: 58 words in BEEP carry it against 31 that sit in brackets, and
+ * whole chants like the 치우고 / 지우고 answers are coloured with no brackets
+ * anywhere near them. Brackets are still honoured, so a chant typed straight
+ * into the lyric line is not missed, and the run between an opening and closing
+ * bracket counts even where it crosses a line.
+ */
+function chantFlags(sylls, fanchant) {
+  const want = (fanchant.baseColor || '').toLowerCase();
   const flags = [];
   let inside = false;
-  for (const t of texts) {
-    const opens = t.includes('(');
-    if (opens) inside = true;
-    flags.push(inside);
-    if (t.includes(')')) inside = false;
+  for (const s of sylls) {
+    if (s.text.includes('(')) inside = true;
+    const painted = !!s.baseColor && s.baseColor.toLowerCase() === want;
+    flags.push(inside || painted);
+    if (s.text.includes(')')) inside = false;
   }
   return flags;
 }
@@ -66,13 +76,12 @@ if (cheer && cheer.appearAt !== undefined) {
 }
 
 for (const idx of blocks.values()) {
-  const flat = idx.flatMap((i) => p.lines[i].syllables.map((s) => s.text));
-  if (!flat.some((t) => t.includes('('))) continue;
+  const flat = idx.flatMap((i) => p.lines[i].syllables);
 
   // Brackets run across lines: the intro chant opens on the first line of its
   // block and closes on the third. Flags are worked out over the whole block
   // and handed back per line, or the middle of a chant reads as ordinary lyric.
-  const flags = chantFlags(flat);
+  const flags = chantFlags(flat, p.fanchant || {});
   let seen = 0;
 
   const all = idx.map((i) => {
@@ -102,6 +111,9 @@ for (const idx of blocks.values()) {
         t: +(s.start - start).toFixed(2),
         d: +(s.end - s.start).toFixed(2),
         c: mine[j] ? 1 : 0,
+        // Struck through in the video: izna's word that the chant talks over.
+        // Not the fan's to sing, but they need to see where they land on it.
+        s: s.strike ? 1 : 0,
       })),
     };
   });
@@ -118,13 +130,14 @@ fs.writeFileSync(`songs/${name}.json`, JSON.stringify(song, null, 1));
 out.forEach((b, i) => {
   const words = b.lines.flatMap((l) => l.w);
   const shout = words.filter((w) => w.c).map((w) => w.k).join(' ');
+  const struck = words.filter((w) => w.s).length;
   console.log(
     String(i + 1).padStart(2),
     `${b.at}s`.padStart(8),
     `${b.dur}s`.padStart(6),
     `${b.lines.length}L`,
     '|',
-    shout.slice(0, 60)
+    shout.slice(0, 52) + (struck ? `  [${struck} struck]` : '')
   );
 });
 console.log(`\nsongs/${name}.json: ${out.length} blocks`);

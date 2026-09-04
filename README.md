@@ -18,7 +18,14 @@ mistake. Timings stay absolute either way, so the wait is real.
 Both rows fill in karaoke, the original and its romaji together, with a hard
 edge running through the letters over exactly the time each word is held. izna's
 words fill purple, the fan's fill izna pink and stand out bold, so what is theirs
-to shout is obvious without reading a legend.
+to shout is obvious without reading a legend. Words struck through in the video
+are struck here too: izna singing underneath the chant.
+
+**What counts as a fanchant** is the fanchant colour, the one the fanchant button
+paints on, not brackets. BEEP has 58 coloured words against 31 bracketed, and
+whole chants like the 치우고 / 지우고 answers carry no brackets at all. Brackets
+are still honoured on top, so a chant typed straight into a lyric line is not
+missed.
 
 - Fans: `.../?song=beep`
 - You, recording the guides: `.../?song=beep#guide`
