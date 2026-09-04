@@ -1,7 +1,7 @@
-# Chant Booth
+# VibeChant
 
-A page where fans record an izna fanchant one shout at a time, so the takes come
-back already the right length and already lined up.
+A page where fans sing an izna fanchant a block at a time, so the takes come back
+already the right length and already lined up.
 
 Live at `https://iznavibe.github.io/chant-booth/`
 
@@ -145,6 +145,17 @@ guides/beep/c1.webm                your guide for that chant
 ```
 
 `c1`..`c15` are the chant ids in `songs/beep.json`, ordered shortest first.
+
+## Sending takes in
+
+A fan's takes stay on their phone until they press **Upload my takes** on the
+last screen, which sends them one at a time and reports how many went. Guides
+are the exception and go up the moment they are recorded, since there is one of
+each and the person making them wants them there.
+
+The finished screen is a grid of every block. Tapping one opens a panel to hear
+that take back or record it again, and nothing is ever closed off: a recorded
+block is still reachable by arrow, by tapping its dot, or from that grid.
 
 ## The guides
 
