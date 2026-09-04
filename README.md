@@ -34,6 +34,14 @@ Chants are listed in the order they happen in the song. The first is the CHEER
 over the intro, which lives as a text box in the project rather than a lyric
 line.
 
+The mic is released the instant a take finishes, and this is not tidiness. While
+a page holds an open microphone, iOS keeps its audio session in record mode,
+which routes sound to the earpiece instead of the speaker and caps the volume, so
+everything played afterwards is faint however far up the side button is pressed.
+Handing the tracks back puts playback right. Takes are then played through Web
+Audio with a gain stage and a limiter, because someone shouting into a phone at
+arm's length still comes back quieter than music.
+
 The mic is asked for with echo cancellation, noise suppression and auto gain all
 switched **off**. That is not a detail: requesting echo cancellation puts iOS
 into its phone-call voice-processing mode, which narrows the band, rides the
