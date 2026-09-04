@@ -25,10 +25,17 @@ during it, because anything sounding while the mic is open ends up in the
 recording. A bar closes to nothing across that second and the card pulses on the
 beat itself, which says "come in now" better than a number does.
 
-While recording, a live bar shows what the mic is hearing. A silent take and a
+While recording, a live bar shows what the mic is hearing. It taps the end of the
+gain chain and then runs into a gain of zero connected to the speakers: that sink
+is load-bearing, because a branch reaching no destination is not guaranteed to be
+processed, and an analyser hanging off the side will read zeroes forever while
+the recording it is watching comes out fine. A silent take and a
 broken mic look identical afterwards, and someone holding a phone has no way to
-tell which they got. A take that comes back empty or silent is refused rather
-than kept.
+tell which they got. Only a provably silent take is refused. `decodeAudioData` cannot read every
+container (iOS writes an mp4 Safari will not always decode), and a quiet meter is
+not evidence of a quiet recording, so anything unproven is kept with a note to go
+and listen. Discarding a good take because a measurement failed is much worse
+than keeping a poor one.
 
 Chants are listed in the order they happen in the song. The first is the CHEER
 over the intro, which lives as a text box in the project rather than a lyric

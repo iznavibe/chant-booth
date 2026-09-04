@@ -561,11 +561,23 @@ function lift(raw) {
     const dest = c.createMediaStreamDestination();
     src.connect(gain).connect(squash).connect(dest);
 
+    /*
+     * The meter taps the end of the chain, and then runs into a silent sink.
+     *
+     * That sink is the point. A branch that reaches no destination is not
+     * guaranteed to be pulled, so an analyser hanging off the side can sit
+     * there reading zeroes forever while the recording it is supposed to be
+     * watching comes out perfectly. Sending it to the speakers at zero gain
+     * puts it on a path that is actually run, and is silent.
+     */
     analyser = c.createAnalyser();
     analyser.fftSize = 512;
-    squash.connect(analyser); // deliberately not to the speakers: that is feedback
+    analyser.smoothingTimeConstant = 0.1;
+    const mute = c.createGain();
+    mute.gain.value = 0;
+    squash.connect(analyser).connect(mute).connect(c.destination);
 
-    chain = { src, gain, squash, dest };
+    chain = { src, gain, squash, dest, analyser, mute };
     return dest.stream;
   } catch (e) {
     // Any browser that will not build the chain records the plain input.
@@ -867,6 +879,8 @@ async function record() {
   if (busy) return;
   busy = true;
   buttons(false);
+  // Whatever went wrong last time is last time's news.
+  $('save-note').hidden = true;
   const c = CHANTS[at];
   let heard = 0;
 
@@ -920,12 +934,21 @@ async function record() {
         return;
       }
 
+      /*
+       * Only a file that is provably silent is refused.
+       *
+       * `peakOf` cannot read every container -- iOS records an mp4 that Safari
+       * will not always decode -- and a quiet meter is not evidence of a quiet
+       * recording. Throwing away a good take because a measurement failed is
+       * far worse than keeping a poor one, so anything unproven is kept, with
+       * a word to go and listen.
+       */
       const peak = await peakOf(blob);
 
       if (peak >= 0 && peak < 0.005) {
-        if (!useRaw && heard >= 0.02) {
-          // The mic heard it, the file did not: this browser will not record
-          // the processed stream. Take the plain one from here on.
+        if (!useRaw) {
+          // Silent file, working mic: this browser will not record the
+          // processed stream. Take the plain one from here on.
           useRaw = true;
           setStatus('Lost that one. Tap Record to go again.');
           note('This phone would not record through the processing, so it is switched ' +
@@ -933,16 +956,9 @@ async function record() {
             'doing again.');
           return;
         }
-        setStatus('Nothing was heard.');
-        note('The recording came out silent. Check nothing else is holding the mic, ' +
+        setStatus('That came out silent.');
+        note('Nothing reached the recording. Check nothing else is holding the mic, ' +
           'and try once more.');
-        return;
-      }
-
-      if (peak < 0 && heard < 0.02) {
-        setStatus('Nothing was heard.');
-        note('The mic is open but picked up almost no sound. Check that nothing else ' +
-          'is holding the mic, and speak up a little.');
         return;
       }
 
@@ -952,6 +968,12 @@ async function record() {
       setStatus('Got it. Have a listen.');
       $('after').hidden = false;
       pips();
+      // Warn, never discard. Where the file could not be read, the meter is
+      // the only witness there is.
+      if ((peak >= 0 && peak < 0.05) || (peak < 0 && heard < 0.02)) {
+        note('That one came out quiet. Have a listen, and try closer to the phone if ' +
+          'it is hard to hear.');
+      }
       save(c, blob, rec.mimeType || MIME);
     };
 
