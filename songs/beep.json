@@ -3,217 +3,12 @@
  "artist": "izna",
  "chants": [
   {
-   "kr": "왜?",
-   "ro": "wae?",
-   "dur": 0.33,
-   "count": 1,
-   "w": [
-    {
-     "k": "왜?",
-     "r": "wae?",
-     "t": 0,
-     "d": 0.33
-    }
-   ],
-   "id": "c1"
-  },
-  {
-   "kr": "BEEP!",
-   "ro": "BEEP!",
-   "dur": 0.36,
-   "count": 1,
-   "w": [
-    {
-     "k": "BEEP!",
-     "r": "BEEP!",
-     "t": 0,
-     "d": 0.36
-    }
-   ],
-   "id": "c2"
-  },
-  {
-   "kr": "좋아해!",
-   "ro": "joahae!",
-   "dur": 0.62,
-   "count": 1,
-   "w": [
-    {
-     "k": "좋아해!",
-     "r": "joahae!",
-     "t": 0,
-     "d": 0.62
-    }
-   ],
-   "id": "c3"
-  },
-  {
-   "kr": "BEEP! BEEP!",
-   "ro": "BEEP! BEEP!",
-   "dur": 0.66,
-   "count": 4,
-   "w": [
-    {
-     "k": "BEEP!",
-     "r": "BEEP!",
-     "t": 0,
-     "d": 0.33
-    },
-    {
-     "k": "BEEP!",
-     "r": "BEEP!",
-     "t": 0.33,
-     "d": 0.33
-    }
-   ],
-   "id": "c4"
-  },
-  {
-   "kr": "이즈나!",
-   "ro": "izna!",
-   "dur": 0.67,
-   "count": 3,
-   "w": [
-    {
-     "k": "이즈나!",
-     "r": "izna!",
-     "t": 0,
-     "d": 0.67
-    }
-   ],
-   "id": "c5"
-  },
-  {
-   "kr": "영원히!",
-   "ro": "yeongweonhi!",
-   "dur": 0.73,
-   "count": 1,
-   "w": [
-    {
-     "k": "영원히!",
-     "r": "yeongweonhi!",
-     "t": 0,
-     "d": 0.73
-    }
-   ],
-   "id": "c6"
-  },
-  {
-   "kr": "BEEP! BEEP! BEEP!",
-   "ro": "BEEP! BEEP! BEEP!",
-   "dur": 0.75,
-   "count": 3,
-   "w": [
-    {
-     "k": "BEEP! BEEP! BEEP!",
-     "r": "BEEP! BEEP! BEEP!",
-     "t": 0,
-     "d": 0.75
-    }
-   ],
-   "id": "c7"
-  },
-  {
-   "kr": "사랑해!",
-   "ro": "saranghae!",
-   "dur": 0.75,
-   "count": 1,
-   "w": [
-    {
-     "k": "사랑해!",
-     "r": "saranghae!",
-     "t": 0,
-     "d": 0.75
-    }
-   ],
-   "id": "c8"
-  },
-  {
-   "kr": "가줄게!",
-   "ro": "gajulge!",
-   "dur": 0.8,
-   "count": 1,
-   "w": [
-    {
-     "k": "가줄게!",
-     "r": "gajulge!",
-     "t": 0,
-     "d": 0.8
-    }
-   ],
-   "id": "c9"
-  },
-  {
-   "kr": "가는 중!",
-   "ro": "ganeun jung!",
-   "dur": 0.81,
-   "count": 1,
-   "w": [
-    {
-     "k": "가는 중!",
-     "r": "ganeun jung!",
-     "t": 0,
-     "d": 0.81
-    }
-   ],
-   "id": "c10"
-  },
-  {
-   "kr": "어디야 Where you at?",
-   "ro": "eodiya Where you at?",
-   "dur": 1.29,
-   "count": 2,
-   "w": [
-    {
-     "k": "어디야",
-     "r": "eodiya",
-     "t": 0,
-     "d": 0.7
-    },
-    {
-     "k": "Where you at?",
-     "r": "Where you at?",
-     "t": 0.7,
-     "d": 0.59
-    }
-   ],
-   "id": "c11"
-  },
-  {
-   "kr": "이즈나 마음속!",
-   "ro": "izna maeumsok!",
-   "dur": 1.54,
-   "count": 1,
-   "w": [
-    {
-     "k": "이즈나 마음속!",
-     "r": "izna maeumsok!",
-     "t": 0,
-     "d": 1.54
-    }
-   ],
-   "id": "c12"
-  },
-  {
-   "kr": "이.즈.나.야!",
-   "ro": "i.z.na.ya!",
-   "dur": 1.6,
-   "count": 1,
-   "w": [
-    {
-     "k": "이.즈.나.야!",
-     "r": "i.z.na.ya!",
-     "t": 0,
-     "d": 1.6
-    }
-   ],
-   "id": "c13"
-  },
-  {
+   "id": "c1",
    "kr": "함성!",
    "ro": "CHEER!",
-   "dur": 2.79,
-   "count": 2,
+   "dur": 2.89,
+   "count": 3,
+   "at": 1.51,
    "w": [
     {
      "k": "함성!",
@@ -221,14 +16,15 @@
      "t": 0,
      "d": 2.79
     }
-   ],
-   "id": "c14"
+   ]
   },
   {
+   "id": "c2",
    "kr": "이즈나 보면 나야는 두근두근 내 마음 들킬까 봐 내 심장은 BEEP BEEP!",
    "ro": "izna bomyeon nayaneun dugeundugeun nae maeum deulkilkka bwa nae shimjangeun BEEP BEEP!",
    "dur": 6.85,
    "count": 1,
+   "at": 6.96,
    "w": [
     {
      "k": "이즈나",
@@ -284,8 +80,227 @@
      "t": 6.41,
      "d": 0.44
     }
-   ],
-   "id": "c15"
+   ]
+  },
+  {
+   "id": "c3",
+   "kr": "왜?",
+   "ro": "wae?",
+   "dur": 0.33,
+   "count": 1,
+   "at": 16.66,
+   "w": [
+    {
+     "k": "왜?",
+     "r": "wae?",
+     "t": 0,
+     "d": 0.33
+    }
+   ]
+  },
+  {
+   "id": "c4",
+   "kr": "BEEP!",
+   "ro": "BEEP!",
+   "dur": 0.36,
+   "count": 1,
+   "at": 38.43,
+   "w": [
+    {
+     "k": "BEEP!",
+     "r": "BEEP!",
+     "t": 0,
+     "d": 0.36
+    }
+   ]
+  },
+  {
+   "id": "c5",
+   "kr": "BEEP! BEEP!",
+   "ro": "BEEP! BEEP!",
+   "dur": 0.8,
+   "count": 4,
+   "at": 43.14,
+   "w": [
+    {
+     "k": "BEEP!",
+     "r": "BEEP!",
+     "t": 0,
+     "d": 0.33
+    },
+    {
+     "k": "BEEP!",
+     "r": "BEEP!",
+     "t": 0.33,
+     "d": 0.33
+    }
+   ]
+  },
+  {
+   "id": "c6",
+   "kr": "BEEP! BEEP! BEEP!",
+   "ro": "BEEP! BEEP! BEEP!",
+   "dur": 0.82,
+   "count": 3,
+   "at": 46.45,
+   "w": [
+    {
+     "k": "BEEP! BEEP! BEEP!",
+     "r": "BEEP! BEEP! BEEP!",
+     "t": 0,
+     "d": 0.75
+    }
+   ]
+  },
+  {
+   "id": "c7",
+   "kr": "이즈나!",
+   "ro": "izna!",
+   "dur": 0.77,
+   "count": 3,
+   "at": 49.71,
+   "w": [
+    {
+     "k": "이즈나!",
+     "r": "izna!",
+     "t": 0,
+     "d": 0.67
+    }
+   ]
+  },
+  {
+   "id": "c8",
+   "kr": "가줄게!",
+   "ro": "gajulge!",
+   "dur": 0.8,
+   "count": 1,
+   "at": 53.16,
+   "w": [
+    {
+     "k": "가줄게!",
+     "r": "gajulge!",
+     "t": 0,
+     "d": 0.8
+    }
+   ]
+  },
+  {
+   "id": "c9",
+   "kr": "어디야 Where you at?",
+   "ro": "eodiya Where you at?",
+   "dur": 1.32,
+   "count": 2,
+   "at": 64.35,
+   "w": [
+    {
+     "k": "어디야",
+     "r": "eodiya",
+     "t": 0,
+     "d": 0.7
+    },
+    {
+     "k": "Where you at?",
+     "r": "Where you at?",
+     "t": 0.7,
+     "d": 0.59
+    }
+   ]
+  },
+  {
+   "id": "c10",
+   "kr": "가는 중!",
+   "ro": "ganeun jung!",
+   "dur": 0.81,
+   "count": 1,
+   "at": 106.81,
+   "w": [
+    {
+     "k": "가는 중!",
+     "r": "ganeun jung!",
+     "t": 0,
+     "d": 0.81
+    }
+   ]
+  },
+  {
+   "id": "c11",
+   "kr": "이즈나 마음속!",
+   "ro": "izna maeumsok!",
+   "dur": 1.54,
+   "count": 1,
+   "at": 146.35,
+   "w": [
+    {
+     "k": "이즈나 마음속!",
+     "r": "izna maeumsok!",
+     "t": 0,
+     "d": 1.54
+    }
+   ]
+  },
+  {
+   "id": "c12",
+   "kr": "좋아해!",
+   "ro": "joahae!",
+   "dur": 0.62,
+   "count": 1,
+   "at": 150.45,
+   "w": [
+    {
+     "k": "좋아해!",
+     "r": "joahae!",
+     "t": 0,
+     "d": 0.62
+    }
+   ]
+  },
+  {
+   "id": "c13",
+   "kr": "사랑해!",
+   "ro": "saranghae!",
+   "dur": 0.75,
+   "count": 1,
+   "at": 153.83,
+   "w": [
+    {
+     "k": "사랑해!",
+     "r": "saranghae!",
+     "t": 0,
+     "d": 0.75
+    }
+   ]
+  },
+  {
+   "id": "c14",
+   "kr": "영원히!",
+   "ro": "yeongweonhi!",
+   "dur": 0.73,
+   "count": 1,
+   "at": 157.16,
+   "w": [
+    {
+     "k": "영원히!",
+     "r": "yeongweonhi!",
+     "t": 0,
+     "d": 0.73
+    }
+   ]
+  },
+  {
+   "id": "c15",
+   "kr": "이.즈.나.야!",
+   "ro": "i.z.na.ya!",
+   "dur": 1.6,
+   "count": 1,
+   "at": 159.74,
+   "w": [
+    {
+     "k": "이.즈.나.야!",
+     "r": "i.z.na.ya!",
+     "t": 0,
+     "d": 1.6
+    }
+   ]
   }
  ]
 }

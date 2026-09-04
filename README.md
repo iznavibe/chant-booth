@@ -22,7 +22,17 @@ Every clip is the same shape: **1s lead-in, the chant, 1.5s tail**, with the mic
 open for all of it. The lead-in is a silent beat to draw breath, and room at the
 head of the clip so the attack of a shout is never clipped. Nothing sounds
 during it, because anything sounding while the mic is open ends up in the
-recording.
+recording. A bar closes to nothing across that second and the card pulses on the
+beat itself, which says "come in now" better than a number does.
+
+While recording, a live bar shows what the mic is hearing. A silent take and a
+broken mic look identical afterwards, and someone holding a phone has no way to
+tell which they got. A take that comes back empty or silent is refused rather
+than kept.
+
+Chants are listed in the order they happen in the song. The first is the CHEER
+over the intro, which lives as a text box in the project rather than a lyric
+line.
 
 The mic is asked for with echo cancellation, noise suppression and auto gain all
 switched **off**. That is not a detail: requesting echo cancellation puts iOS

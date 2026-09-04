@@ -180,6 +180,38 @@
   .meter { height: 8px; border-radius: 99px; background: var(--sunk); overflow: hidden; margin-top: 18px; }
   .meter i { display: block; height: 100%; width: 0; background: var(--pink); border-radius: 99px; }
 
+  /* The run-in: a bar closing on the entry, the way a karaoke lead-in does.
+     Watching a gap shrink to nothing says "now" far better than a number. */
+  .lead {
+    height: 10px;
+    margin-top: 16px;
+    display: flex;
+    justify-content: center;
+    gap: 6px;
+    opacity: 0;
+    transition: opacity .15s linear;
+  }
+  .lead.on { opacity: 1; }
+  .lead b {
+    display: block;
+    width: 0;
+    height: 100%;
+    background: var(--purple);
+    border-radius: 99px;
+  }
+
+  /* The instant to come in. */
+  .stage.go { animation: go .45s ease-out; }
+  @keyframes go {
+    0%   { box-shadow: 0 0 0 0 var(--pink); }
+    100% { box-shadow: 0 0 0 16px rgba(253, 83, 143, 0); }
+  }
+
+  /* What the mic is actually hearing, so a dead mic is obvious at a glance. */
+  .level { height: 6px; border-radius: 99px; background: var(--sunk); overflow: hidden; margin-top: 10px; }
+  .level i { display: block; height: 100%; width: 0; background: var(--mint); border-radius: 99px; transition: width .06s linear; }
+  .level.quiet i { background: var(--pink); }
+
   .status {
     font-family: var(--display);
     font-weight: 600;
@@ -276,11 +308,13 @@
   <section id="screen-rec" hidden>
     <div class="pips" id="pips"></div>
 
-    <div class="stage" style="margin-top:14px">
+    <div class="stage" id="stage" style="margin-top:14px">
       <span class="badge" id="chant-badge"></span>
       <p class="chant" id="chant-kr"></p>
       <p class="romaji" id="chant-ro"></p>
+      <div class="lead" id="lead"><b id="lead-bar"></b></div>
       <div class="meter"><i id="meter-fill"></i></div>
+      <div class="level" id="level" hidden><i id="level-bar"></i></div>
       <p class="status" id="status">Listen first, then record.</p>
       <p class="countdown" id="countdown"></p>
     </div>
@@ -468,21 +502,48 @@ let mic = null;
  */
 async function getMic() {
   if (mic) return mic;
-  const plain = {
-    echoCancellation: false,
-    noiseSuppression: false,
-    autoGainControl: false,
-    channelCount: 1,
-    sampleRate: 48000,
-  };
+  // Only the three processors, nothing else. Pinning sampleRate or
+  // channelCount is what iOS is most likely to hand back a stream for and
+  // then record silence from, and neither buys anything here.
   try {
-    mic = await navigator.mediaDevices.getUserMedia({ audio: plain });
+    mic = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+    });
   } catch (e) {
-    // An older browser may refuse the constraint set outright; a plain mic
-    // beats no mic.
     mic = await navigator.mediaDevices.getUserMedia({ audio: true });
   }
+  watchLevel(mic);
   return mic;
+}
+
+/**
+ * Show what the mic is hearing.
+ *
+ * A silent take and a broken mic look identical after the fact, and someone
+ * holding a phone has no way to tell which they got. A live bar answers it
+ * while they are still in the room.
+ */
+let analyser = null;
+function watchLevel(stream) {
+  try {
+    const c = audio();
+    const src = c.createMediaStreamSource(stream);
+    analyser = c.createAnalyser();
+    analyser.fftSize = 512;
+    src.connect(analyser); // deliberately not to the speakers: that is feedback
+  } catch (e) {
+    analyser = null;
+  }
+}
+
+/** Loudest sample right now, 0 to 1. */
+function level() {
+  if (!analyser) return 0;
+  const buf = new Uint8Array(analyser.fftSize);
+  analyser.getByteTimeDomainData(buf);
+  let peak = 0;
+  for (let i = 0; i < buf.length; i++) peak = Math.max(peak, Math.abs(buf[i] - 128) / 128);
+  return peak;
 }
 
 /** Whichever container this browser records: webm on Chrome, mp4 on Safari. */
@@ -543,24 +604,52 @@ function paintChant(c) {
  * then the tail. Drives the meter across the whole thing, so what is on screen
  * is exactly what is being recorded.
  */
-function sweep(c, onDone) {
+function sweep(c, onDone, opts) {
+  const live = !!(opts && opts.live);
   const words = [...$('chant-kr').querySelectorAll('.w')];
   const total = PRE + c.dur + TAIL;
   const t0 = performance.now();
+  let entered = false;
+  let loudest = 0;
+
+  $('lead').classList.add('on');
+  if (live) $('level').hidden = false;
+
   (function frame() {
     const el = (performance.now() - t0) / 1000;
+
+    if (el < PRE) {
+      // A bar closing on the moment to come in.
+      $('lead-bar').style.width = (1 - el / PRE) * 60 + '%';
+    } else if (!entered) {
+      entered = true;
+      $('lead-bar').style.width = '0%';
+      $('lead').classList.remove('on');
+      $('stage').classList.add('go');
+      setTimeout(() => $('stage').classList.remove('go'), 500);
+      setStatus('Shout!', true);
+    }
+
     words.forEach((node, i) => {
       const w = c.w[i];
       node.classList.toggle('lit', !!w && el >= PRE + w.t && el < PRE + w.t + w.d + 0.12);
     });
     $('meter-fill').style.width = Math.min(100, (el / total) * 100) + '%';
 
+    if (live) {
+      const v = level();
+      loudest = Math.max(loudest, v);
+      $('level-bar').style.width = Math.min(100, v * 140) + '%';
+    }
+
     if (el < total) requestAnimationFrame(frame);
     else {
       words.forEach((n) => n.classList.remove('lit'));
       $('meter-fill').style.width = '0%';
+      $('lead').classList.remove('on');
+      $('level').hidden = true;
       $('countdown').textContent = '';
-      onDone && onDone();
+      onDone && onDone(loudest);
     }
   })();
 }
@@ -646,6 +735,7 @@ async function record() {
   busy = true;
   buttons(false);
   const c = CHANTS[at];
+  let heard = 0;
 
   let stream;
   try {
@@ -676,23 +766,51 @@ async function record() {
     rec.ondataavailable = (e) => e.data.size && parts.push(e.data);
     rec.onstop = () => {
       const blob = new Blob(parts, { type: rec.mimeType || MIME || 'audio/webm' });
+      busy = false;
+      buttons(true);
+      $('countdown').textContent = '';
+
+      // An empty file and a silent room look the same afterwards, so say which
+      // rather than keeping a take that has nothing on it.
+      if (blob.size < 1200) {
+        setStatus('That came back empty.');
+        note('The recording had nothing in it. Close other apps using the mic, reload ' +
+          'the page, and allow the microphone when asked.');
+        return;
+      }
+      if (heard < 0.02) {
+        setStatus('Nothing was heard.');
+        note('The mic is open but picked up almost no sound. Check that nothing else ' +
+          'is holding the mic, and speak up a little.');
+        return;
+      }
+
       const old = takes.get(c.id);
       if (old) URL.revokeObjectURL(old.url);
       takes.set(c.id, { blob, url: URL.createObjectURL(blob), mime: rec.mimeType || MIME });
-      $('countdown').textContent = '';
       setStatus('Got it. Have a listen.');
       $('after').hidden = false;
       pips();
-      busy = false;
-      buttons(true);
       save(c, blob, rec.mimeType || MIME);
     };
-    // Rolling before the dots and still rolling through the tail, so the clip
-    // has room at both ends and nothing gets clipped.
-    rec.start();
+
+    // Rolling before the entry and still rolling through the tail, so the clip
+    // has room at both ends. The timeslice matters: without one, some versions
+    // of Safari hand back a single empty blob at the end.
+    rec.start(250);
     setStatus('Ready…', true);
-    setTimeout(() => busy && setStatus('Shout!', true), PRE * 1000);
-    sweep(c, () => rec.state !== 'inactive' && rec.stop());
+
+    const finish = (loudest) => {
+      if (rec.state === 'inactive') return;
+      heard = loudest;
+      rec.stop();
+    };
+    sweep(c, finish, { live: true });
+
+    // The sweep runs on animation frames, which stop dead if the screen locks
+    // or the phone switches apps. Without this the recorder would just keep
+    // rolling and the take would never be handed back.
+    setTimeout(() => finish(heard), (PRE + c.dur + TAIL) * 1000 + 400);
   });
 }
 
