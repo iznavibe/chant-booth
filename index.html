@@ -512,27 +512,66 @@ async function getMic() {
   } catch (e) {
     mic = await navigator.mediaDevices.getUserMedia({ audio: true });
   }
-  watchLevel(mic);
+  recStream = lift(mic);
   return mic;
 }
 
 /**
- * Show what the mic is hearing.
+ * Lift the microphone, and record what comes out of that rather than the bare
+ * input.
  *
- * A silent take and a broken mic look identical after the fact, and someone
- * holding a phone has no way to tell which they got. A live bar answers it
- * while they are still in the room.
+ * A phone mic with every processor switched off is quiet. That is the honest
+ * signal, but someone shouting at arm's length still lands well below where a
+ * recording wants to be, and the obvious fix, letting the browser's automatic
+ * gain do it, is the thing that drags iOS into its phone-call processing mode.
+ *
+ * So the gain happens here instead: lift first, then a compressor to sit on the
+ * peaks so a real shout does not clip. Deterministic, the same on every phone,
+ * and it never touches the audio session. The meter taps the end of the chain,
+ * so the bar shows what is actually being recorded.
  */
+const INPUT_GAIN = 5;
+
 let analyser = null;
-function watchLevel(stream) {
+let recStream = null;
+let chain = null;
+/**
+ * Set if a take ever comes back silent from the lifted stream.
+ *
+ * Some builds of iOS Safari will happily record a Web Audio stream and write
+ * an empty file. It cannot be tested for in advance, so instead the first
+ * silent take switches this on for the rest of the session and recording falls
+ * back to the bare microphone: quieter, but real.
+ */
+let useRaw = false;
+
+function lift(raw) {
+  if (useRaw) return raw;
   try {
     const c = audio();
-    const src = c.createMediaStreamSource(stream);
+    const src = c.createMediaStreamSource(raw);
+    const gain = c.createGain();
+    gain.gain.value = INPUT_GAIN;
+    const squash = c.createDynamicsCompressor();
+    squash.threshold.value = -20;
+    squash.knee.value = 6;
+    squash.ratio.value = 8;
+    squash.attack.value = 0.003;
+    squash.release.value = 0.15;
+    const dest = c.createMediaStreamDestination();
+    src.connect(gain).connect(squash).connect(dest);
+
     analyser = c.createAnalyser();
     analyser.fftSize = 512;
-    src.connect(analyser); // deliberately not to the speakers: that is feedback
+    squash.connect(analyser); // deliberately not to the speakers: that is feedback
+
+    chain = { src, gain, squash, dest };
+    return dest.stream;
   } catch (e) {
+    // Any browser that will not build the chain records the plain input.
     analyser = null;
+    chain = null;
+    return raw;
   }
 }
 
@@ -547,6 +586,14 @@ function watchLevel(stream) {
  * by then, so asking again for the next chant costs nothing.
  */
 function releaseMic() {
+  if (chain) {
+    Object.values(chain).forEach((n) => { try { n.disconnect(); } catch (e) { /* gone */ } });
+    chain = null;
+  }
+  if (recStream) {
+    recStream.getTracks().forEach((t) => t.stop());
+    recStream = null;
+  }
   if (mic) {
     mic.getTracks().forEach((t) => t.stop());
     mic = null;
@@ -609,6 +656,26 @@ async function micTrouble(e) {
 
   setStatus(say);
   note(`${say} (${name} / ${framePolicy()} / ${state})`);
+}
+
+/**
+ * The loudest sample in a finished recording, or -1 if it cannot be read.
+ *
+ * The level meter says what the microphone heard; this says what reached the
+ * file. When those two disagree the recording path is at fault, which is the
+ * one failure a person holding a phone could never diagnose themselves.
+ */
+async function peakOf(blob) {
+  try {
+    const c = audio();
+    const buf = await c.decodeAudioData(await blob.slice(0).arrayBuffer());
+    const d = buf.getChannelData(0);
+    let peak = 0;
+    for (let i = 0; i < d.length; i += 16) peak = Math.max(peak, Math.abs(d[i]));
+    return peak;
+  } catch (e) {
+    return -1;
+  }
 }
 
 /**
@@ -803,10 +870,13 @@ async function record() {
   const c = CHANTS[at];
   let heard = 0;
 
-  let stream;
   try {
     setStatus('Allow the mic to start…');
-    stream = await getMic();
+    // A suspended context builds a chain that records silence, and phones
+    // suspend it whenever the page goes to the background. This click is a
+    // real gesture, so it is the moment to wake it.
+    await audio().resume().catch(() => {});
+    await getMic();
   } catch (e) {
     await micTrouble(e);
     busy = false;
@@ -821,7 +891,10 @@ async function record() {
       // 32kbps was sized for a database row; these are files now, and a few
       // seconds at 128 costs nothing next to a take that sounds like a phone
       // call.
-      rec = new MediaRecorder(stream, MIME ? { mimeType: MIME, audioBitsPerSecond: 128000 } : {});
+      rec = new MediaRecorder(
+        recStream || mic,
+        MIME ? { mimeType: MIME, audioBitsPerSecond: 128000 } : {}
+      );
     } catch (e) {
       setStatus('This browser cannot record. Try Chrome, or Safari on iPhone.');
       busy = false;
@@ -830,7 +903,7 @@ async function record() {
     }
     const parts = [];
     rec.ondataavailable = (e) => e.data.size && parts.push(e.data);
-    rec.onstop = () => {
+    rec.onstop = async () => {
       const blob = new Blob(parts, { type: rec.mimeType || MIME || 'audio/webm' });
       // Straight away, so playback is not stuck in the earpiece.
       releaseMic();
@@ -846,7 +919,27 @@ async function record() {
           'the page, and allow the microphone when asked.');
         return;
       }
-      if (heard < 0.02) {
+
+      const peak = await peakOf(blob);
+
+      if (peak >= 0 && peak < 0.005) {
+        if (!useRaw && heard >= 0.02) {
+          // The mic heard it, the file did not: this browser will not record
+          // the processed stream. Take the plain one from here on.
+          useRaw = true;
+          setStatus('Lost that one. Tap Record to go again.');
+          note('This phone would not record through the processing, so it is switched ' +
+            'off. Takes will be a little quieter, which is fine, and this one needs ' +
+            'doing again.');
+          return;
+        }
+        setStatus('Nothing was heard.');
+        note('The recording came out silent. Check nothing else is holding the mic, ' +
+          'and try once more.');
+        return;
+      }
+
+      if (peak < 0 && heard < 0.02) {
         setStatus('Nothing was heard.');
         note('The mic is open but picked up almost no sound. Check that nothing else ' +
           'is holding the mic, and speak up a little.');

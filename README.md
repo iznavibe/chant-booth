@@ -48,6 +48,14 @@ into its phone-call voice-processing mode, which narrows the band, rides the
 gain and picks the receiver-facing mic, and a shout through it comes back thin.
 Nothing plays while recording, so there is no echo to cancel anyway.
 
+With those off the raw input is quiet, so the gain is applied here instead:
+`mic -> gain x5 -> compressor -> MediaRecorder`. Lift first, then sit on the
+peaks so a real shout does not clip. Doing it this way is deterministic and
+never touches the audio session, unlike letting the browser's automatic gain do
+it. If a take ever comes back silent while the level meter saw sound, the page
+decides this browser will not record a processed stream and falls back to the
+bare microphone for the rest of the session.
+
 Because the lead-in is fixed, the first word sits exactly 1s into every take of
 every chant, so the whole pile drops onto the timeline at one offset. Do not
 tighten them up afterwards: a crowd chanting in perfect lockstep sounds wrong,
