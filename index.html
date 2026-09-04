@@ -191,7 +191,7 @@
 
   .countdown {
     font-family: var(--display);
-    font-size: 3.4rem;
+    font-size: 2.2rem;
     font-weight: 700;
     line-height: 1;
     color: var(--pink);
@@ -357,11 +357,11 @@ const BEAT = 0.6;     // seconds between count-in clicks
  * Every clip is PRE + the chant + TAIL, always, and recording covers the whole
  * of it.
  *
- * PRE is the three dots: a breath between the count and the first word, so
- * nobody is thrown straight in, and room at the head of the clip so the very
- * start of a shout is never clipped off. It is silent on purpose. The count-in
- * clicks already gave the tempo, and anything sounding while the mic is open
- * would end up in the recording.
+ * PRE is a silent beat between the count and the first word: a moment to draw
+ * breath, and room at the head of the clip so the attack of a shout is never
+ * clipped off. Nothing is drawn or sounded during it. The count-in already gave
+ * the tempo, the meter shows time passing, and anything sounding while the mic
+ * is open would end up in the recording.
  *
  * TAIL is the same courtesy at the other end. Both are fixed, so the words sit
  * at the same offset in every take of every chant and the whole pile still
@@ -453,11 +453,35 @@ function click(when, accent) {
 }
 
 let mic = null;
+
+/**
+ * Ask for the plain microphone, with every processor switched off.
+ *
+ * This matters far more than it looks. Requesting echo cancellation puts iOS
+ * into its voice-processing mode, which is tuned for phone calls: it narrows
+ * the band, rides the gain hard and picks the receiver-facing mic, and a shout
+ * recorded through it comes back thin and swimmy. Noise suppression then eats
+ * the front of each word, because a sudden shout looks a lot like noise.
+ *
+ * None of it is needed here. Nothing is playing while the mic is open, so
+ * there is no echo to cancel, and a crowd chant wants the raw loud take.
+ */
 async function getMic() {
   if (mic) return mic;
-  mic = await navigator.mediaDevices.getUserMedia({
-    audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-  });
+  const plain = {
+    echoCancellation: false,
+    noiseSuppression: false,
+    autoGainControl: false,
+    channelCount: 1,
+    sampleRate: 48000,
+  };
+  try {
+    mic = await navigator.mediaDevices.getUserMedia({ audio: plain });
+  } catch (e) {
+    // An older browser may refuse the constraint set outright; a plain mic
+    // beats no mic.
+    mic = await navigator.mediaDevices.getUserMedia({ audio: true });
+  }
   return mic;
 }
 
@@ -515,27 +539,16 @@ function paintChant(c) {
 }
 
 /**
- * Run one clip: the three lead-in dots, then each word lighting at its own
- * moment, then the tail. Drives the meter across the whole thing, so what is
- * on screen is exactly what is being recorded.
+ * Run one clip: the silent lead-in, then each word lighting at its own moment,
+ * then the tail. Drives the meter across the whole thing, so what is on screen
+ * is exactly what is being recorded.
  */
 function sweep(c, onDone) {
   const words = [...$('chant-kr').querySelectorAll('.w')];
   const total = PRE + c.dur + TAIL;
   const t0 = performance.now();
-  let dots = -1;
   (function frame() {
     const el = (performance.now() - t0) / 1000;
-
-    if (el < PRE) {
-      // Three dots filling in, counting the last beat before the words.
-      const n = Math.min(3, Math.floor(el / (PRE / 3)) + 1);
-      if (n !== dots) { dots = n; $('countdown').textContent = '·'.repeat(n); }
-    } else if (dots !== 0) {
-      dots = 0;
-      $('countdown').textContent = '';
-    }
-
     words.forEach((node, i) => {
       const w = c.w[i];
       node.classList.toggle('lit', !!w && el >= PRE + w.t && el < PRE + w.t + w.d + 0.12);
@@ -573,7 +586,7 @@ function countIn(then) {
   $('countdown').textContent = n;
   const tick = setInterval(() => {
     n -= 1;
-    $('countdown').textContent = n > 0 ? n : '●';
+    $('countdown').textContent = n > 0 ? n : '';
   }, BEAT * 1000);
 
   setTimeout(() => { clearInterval(tick); then(); }, (0.25 + COUNT_IN * BEAT) * 1000);
@@ -649,7 +662,10 @@ async function record() {
   countIn(() => {
     let rec;
     try {
-      rec = new MediaRecorder(stream, MIME ? { mimeType: MIME, audioBitsPerSecond: 32000 } : {});
+      // 32kbps was sized for a database row; these are files now, and a few
+      // seconds at 128 costs nothing next to a take that sounds like a phone
+      // call.
+      rec = new MediaRecorder(stream, MIME ? { mimeType: MIME, audioBitsPerSecond: 128000 } : {});
     } catch (e) {
       setStatus('This browser cannot record. Try Chrome, or Safari on iPhone.');
       busy = false;

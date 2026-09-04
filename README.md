@@ -16,14 +16,19 @@ and means headphones are optional, which is the difference between people taking
 part and not.
 
 What a fan hears instead is your guide voice with the words sweeping in time,
-then a 3-2-1 count-in, then three dots.
+then a 3-2-1 count-in.
 
 Every clip is the same shape: **1s lead-in, the chant, 1.5s tail**, with the mic
-open for all of it. The dots are that lead-in. They give a breath between the
-count and the first word so nobody is thrown straight in, and they leave room at
-the head of the clip so the start of a shout is never clipped. They are silent
-on purpose, because anything sounding while the mic is open ends up in the
+open for all of it. The lead-in is a silent beat to draw breath, and room at the
+head of the clip so the attack of a shout is never clipped. Nothing sounds
+during it, because anything sounding while the mic is open ends up in the
 recording.
+
+The mic is asked for with echo cancellation, noise suppression and auto gain all
+switched **off**. That is not a detail: requesting echo cancellation puts iOS
+into its phone-call voice-processing mode, which narrows the band, rides the
+gain and picks the receiver-facing mic, and a shout through it comes back thin.
+Nothing plays while recording, so there is no echo to cancel anyway.
 
 Because the lead-in is fixed, the first word sits exactly 1s into every take of
 every chant, so the whole pile drops onto the timeline at one offset. Do not
