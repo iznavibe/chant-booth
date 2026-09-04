@@ -553,23 +553,27 @@ const CAN_UPLOAD = !!(CFG.url && CFG.key);
 /**
  * Straight to Supabase Storage over REST, no SDK.
  *
- * The anon key is meant to live in page code; what stops a passer-by writing
- * anywhere is the bucket policy, not secrecy. Takes go into a bucket nobody
- * can read back, guides into one everybody can.
+ * The publishable key is meant to live in page code; what stops a passer-by
+ * writing anywhere is the bucket policy, not secrecy. Takes go into a bucket
+ * nobody can read back, guides into one everybody can.
+ *
+ * `replace` is off unless asked for, and that is the whole difference between
+ * the two. Asking to replace makes the server look for an existing file even
+ * when there is none, and looking means reading, which the takes bucket
+ * forbids: a brand new take would be refused by the very policy protecting it.
+ * Guides may replace, because guides are readable.
  */
-async function put(bucket, path, blob, type) {
+async function put(bucket, path, blob, type, replace) {
+  const headers = {
+    apikey: CFG.key,
+    Authorization: 'Bearer ' + CFG.key,
+    'Content-Type': type || 'application/octet-stream',
+  };
+  if (replace) headers['x-upsert'] = 'true';
+
   const res = await fetch(
     `${CFG.url}/storage/v1/object/${bucket}/${encodeURI(path)}`,
-    {
-      method: 'POST',
-      headers: {
-        apikey: CFG.key,
-        Authorization: 'Bearer ' + CFG.key,
-        'Content-Type': type || 'application/octet-stream',
-        'x-upsert': 'true',
-      },
-      body: blob,
-    }
+    { method: 'POST', headers, body: blob }
   );
   if (!res.ok) throw new Error(res.status + ' ' + (await res.text()).slice(0, 200));
 }
@@ -1234,7 +1238,7 @@ function buttons(on) {
 async function saveGuide(c, blob, mime) {
   if (!CAN_UPLOAD) return;
   try {
-    await put('guides', `${SONG}/${c.id}.webm`, blob, mime);
+    await put('guides', `${SONG}/${c.id}.webm`, blob, mime, true);
     const old = guides.get(c.id);
     if (old) URL.revokeObjectURL(old);
     guides.set(c.id, URL.createObjectURL(blob));
@@ -1270,7 +1274,7 @@ async function uploadGuide(e) {
 
   setStatus('Uploading the guide…');
   try {
-    await put('guides', `${SONG}/${c.id}.webm`, file, file.type || 'audio/webm');
+    await put('guides', `${SONG}/${c.id}.webm`, file, file.type || 'audio/webm', true);
     const old = guides.get(c.id);
     if (old) URL.revokeObjectURL(old);
     guides.set(c.id, URL.createObjectURL(file));
@@ -1389,6 +1393,7 @@ async function uploadAll() {
 
   let sent = 0;
   let failed = 0;
+  let why = '';
   for (const c of outstanding) {
     const t = takes.get(c.id);
     $('upload-note').textContent = `Sending ${sent + failed + 1} of ${outstanding.length}…`;
@@ -1398,6 +1403,7 @@ async function uploadAll() {
       sent += 1;
     } catch (e) {
       failed += 1;
+      why = e.message;
     }
   }
   try {
@@ -1412,7 +1418,7 @@ async function uploadAll() {
 
   $('btn-upload').disabled = false;
   $('upload-note').textContent = failed
-    ? `${sent} sent, ${failed} would not go through. Press again to retry those.`
+    ? `${sent} sent, ${failed} would not go through. Press again to retry those. (${why})`
     : `All ${uploaded.size} sent. Thank you!`;
   if (!failed) $('done-title').textContent = 'Sent. Thank you!';
 }
