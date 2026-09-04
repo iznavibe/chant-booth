@@ -162,6 +162,27 @@ fan's recording.
 The consent line promises recordings are deleted once the project is finished, so
 clear the `takes` bucket when the video is out.
 
+## Surviving a refresh
+
+Takes are written to IndexedDB as they are recorded, keyed by song and block,
+along with the handle and whether each one has been sent. A reload, a mistyped
+tap, or coming back tomorrow finds them still there, and the intro says how many
+and offers to carry on at the first block still waiting.
+
+localStorage cannot hold a blob, so IndexedDB is the only option that keeps the
+audio itself. Every call fails silently: a phone in private browsing throws on
+the first one, and the booth has to keep working from memory alone rather than
+refuse to start.
+
+## What it costs
+
+One fan singing all 21 BEEP blocks is **2.9 minutes of audio, about 2.7 MB** at
+128 kbps mono. Supabase's free tier gives 1 GB, so roughly **380 fans**; the
+$25/month tier gives 100 GB, so about 38,000. Egress is the other limit, 2 GB a
+month free, but only you ever download these, so a full 1 GB pull is well inside
+it. Dropping to 96 kbps would reach ~500 fans and 64 kbps ~760, at some cost to
+a shout's clarity. 128 is worth keeping unless the free tier actually fills.
+
 ## Sending takes in
 
 A fan's takes stay on their phone until they press **Upload my takes** on the

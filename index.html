@@ -383,6 +383,7 @@
         <label for="handle" class="muted">Your name for the credits (optional)</label>
         <input id="handle" type="text" placeholder="@yourhandle" maxlength="40" autocomplete="off">
       </div>
+      <p class="note" id="resume" hidden style="margin-top:0"></p>
       <button class="primary full" id="begin">Let's go</button>
       <p class="muted">
         By taking part, you agree to your voice being used in a public fanchant
@@ -543,6 +544,86 @@ try {
 
 const esc = (s) => String(s).replace(/[&<>"]/g, (m) =>
   ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[m]));
+
+/* ---------------- keeping takes across a refresh ---------------- */
+
+/**
+ * Takes live in IndexedDB, not just in memory.
+ *
+ * Three minutes of recording is a real piece of work, and losing it to a
+ * mistyped tap, a phone deciding to reload the page, or simply coming back
+ * later would be the difference between a fan finishing and giving up.
+ * localStorage cannot hold a blob, so this is the only option that keeps the
+ * audio itself.
+ *
+ * Every failure here is silent by design. A phone in private browsing throws on
+ * the very first call, and the booth has to keep working from memory alone
+ * rather than refuse to start.
+ */
+const DB_NAME = 'vibechant';
+let store = null;
+
+function openStore() {
+  return new Promise((res) => {
+    let req;
+    try {
+      req = indexedDB.open(DB_NAME, 1);
+    } catch (e) {
+      return res(null);
+    }
+    req.onupgradeneeded = () => {
+      const d = req.result;
+      if (!d.objectStoreNames.contains('takes')) d.createObjectStore('takes');
+      if (!d.objectStoreNames.contains('meta')) d.createObjectStore('meta');
+    };
+    req.onsuccess = () => res(req.result);
+    req.onerror = () => res(null);
+    req.onblocked = () => res(null);
+  });
+}
+
+function idb(name, mode, run) {
+  return new Promise((res) => {
+    if (!store) return res(null);
+    let tx;
+    try {
+      tx = store.transaction(name, mode);
+    } catch (e) {
+      return res(null);
+    }
+    const req = run(tx.objectStore(name));
+    if (!req) { tx.oncomplete = () => res(null); return; }
+    req.onsuccess = () => res(req.result);
+    req.onerror = () => res(null);
+  });
+}
+
+const keep = (key, val) => idb('takes', 'readwrite', (o) => o.put(val, key));
+const forget = (key) => idb('takes', 'readwrite', (o) => o.delete(key));
+const allKept = () => idb('takes', 'readonly', (o) => o.getAll());
+const allKeys = () => idb('takes', 'readonly', (o) => o.getAllKeys());
+const remember = (k, v) => idb('meta', 'readwrite', (o) => o.put(v, k));
+const recall = (k) => idb('meta', 'readonly', (o) => o.get(k));
+
+/** Everything this song has already recorded on this phone. */
+async function restore() {
+  store = await openStore();
+  if (!store) return 0;
+
+  const keys = (await allKeys()) || [];
+  const vals = (await allKept()) || [];
+  keys.forEach((k, i) => {
+    const v = vals[i];
+    if (!v || !String(k).startsWith(SONG + ':') || !v.blob) return;
+    const id = String(k).slice(SONG.length + 1);
+    takes.set(id, { blob: v.blob, url: URL.createObjectURL(v.blob), mime: v.mime, n: v.n || 1 });
+    if (v.sent) uploaded.add(`${id}:${v.n || 1}`);
+  });
+
+  const who = await recall('handle');
+  if (who) handle = who;
+  return takes.size;
+}
 
 /* ---------------- storage ---------------- */
 
@@ -1175,12 +1256,9 @@ async function record() {
 
       const old = takes.get(c.id);
       if (old) URL.revokeObjectURL(old.url);
-      takes.set(c.id, {
-        blob,
-        url: URL.createObjectURL(blob),
-        mime: rec.mimeType || MIME,
-        n: (old ? old.n : 0) + 1,
-      });
+      const n = (old ? old.n : 0) + 1;
+      takes.set(c.id, { blob, url: URL.createObjectURL(blob), mime: rec.mimeType || MIME, n });
+      keep(`${SONG}:${c.id}`, { blob, mime: rec.mimeType || MIME, n, sent: false });
       setStatus('Got it. Have a listen.');
       $('btn-record').textContent = GUIDE ? 'Redo guide' : 'Redo';
       pips();
@@ -1399,6 +1477,7 @@ async function uploadAll() {
     try {
       await put('takes', `${SONG}/${c.id}/${sessionId}-${t.n}.webm`, t.blob, t.mime);
       uploaded.add(`${c.id}:${t.n}`);
+      keep(`${SONG}:${c.id}`, { blob: t.blob, mime: t.mime, n: t.n, sent: true });
       sent += 1;
     } catch (e) {
       failed += 1;
@@ -1426,9 +1505,12 @@ async function uploadAll() {
 
 $('begin').addEventListener('click', () => {
   handle = $('handle').value.trim().slice(0, 40);
+  remember('handle', handle);
   audio(); // created inside the gesture, so later clicks are allowed to sound
   show('rec');
-  goto(0);
+  // Back to the first block still waiting, rather than the very beginning.
+  const next = CHANTS.findIndex((c) => !takes.has(c.id));
+  goto(next === -1 ? 0 : next);
 });
 $('btn-listen').addEventListener('click', listen);
 $('btn-record').addEventListener('click', record);
@@ -1501,6 +1583,15 @@ $('btn-upload').addEventListener('click', uploadAll);
     $('lede').textContent =
       'This browser cannot record audio. Open the link in Chrome, or in Safari on iPhone.';
     return;
+  }
+
+  const found = await restore();
+  if (found) {
+    if (handle) $('handle').value = handle;
+    $('begin').textContent = found === CHANTS.length ? 'Carry on' : 'Carry on where you left off';
+    $('resume').hidden = false;
+    $('resume').textContent =
+      `${found} of ${CHANTS.length} already recorded on this phone. They are still here.`;
   }
 
   show('intro');
