@@ -209,6 +209,24 @@
   /* The one being sung right now. */
   .w.now { filter: drop-shadow(0 0 10px var(--pink-soft)); }
 
+  .songs { display: flex; flex-direction: column; gap: 8px; }
+  .song {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    text-align: left;
+    width: 100%;
+    background: var(--sunk);
+    border: 1px solid var(--edge);
+    border-radius: 14px;
+    padding: 14px 16px;
+    text-decoration: none;
+    color: var(--ink);
+    font-family: var(--display);
+    font-weight: 600;
+  }
+  .song small { margin-left: auto; color: var(--muted); font-weight: 400; font-size: .8rem; }
+
   .legend { font-size: .78rem; color: var(--muted); margin-top: 2px; }
   .legend b { color: var(--ink-soft); }
 
@@ -371,6 +389,13 @@
     <p class="soft" id="lede" hidden></p>
   </header>
 
+  <section id="screen-pick" hidden>
+    <div class="card" style="display:flex;flex-direction:column;gap:14px">
+      <h2>Pick a song</h2>
+      <div class="songs" id="song-list"></div>
+    </div>
+  </section>
+
   <section id="screen-intro" hidden>
     <div class="card" style="display:flex;flex-direction:column;gap:14px">
       <h2>Before you start</h2>
@@ -476,7 +501,7 @@
  * ------------------------------------------------------------------ */
 
 const CFG = window.BOOTH_CONFIG || {};
-const SONG = new URLSearchParams(location.search).get('song') || 'beep';
+const SONG = new URLSearchParams(location.search).get('song');
 
 /**
  * Guide mode.
@@ -509,7 +534,12 @@ const PRE = 1.0;
 const TAIL = 1.5;
 
 const $ = (id) => document.getElementById(id);
-const screens = { intro: $('screen-intro'), rec: $('screen-rec'), done: $('screen-done') };
+const screens = {
+  pick: $('screen-pick'),
+  intro: $('screen-intro'),
+  rec: $('screen-rec'),
+  done: $('screen-done'),
+};
 
 let CHANTS = [];
 let song = null;
@@ -1565,6 +1595,24 @@ $('sheet').addEventListener('click', (e) => { if (e.target === $('sheet')) close
 $('btn-upload').addEventListener('click', uploadAll);
 
 (async function start() {
+  // No song named, so offer the list rather than guessing at one.
+  if (!SONG) {
+    document.title = 'VibeChant';
+    $('eyebrow').textContent = 'izna';
+    try {
+      const { songs } = await (await fetch('songs/index.json', { cache: 'no-cache' })).json();
+      $('song-list').innerHTML = songs
+        .map((s) => `<a class="song" href="?song=${encodeURIComponent(s.name)}">${esc(s.title)}` +
+          `<small>${s.blocks} blocks, ${s.minutes} min</small></a>`)
+        .join('');
+      show('pick');
+    } catch (e) {
+      $('lede').hidden = false;
+      $('lede').textContent = 'Could not load the song list.';
+    }
+    return;
+  }
+
   try {
     const res = await fetch(`songs/${SONG}.json`, { cache: 'no-cache' });
     if (!res.ok) throw new Error('song ' + res.status);
