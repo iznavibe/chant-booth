@@ -257,34 +257,26 @@ tab is open and stored nowhere, not localStorage, not this repository. Paste it
 when adding guides, close the tab when done. Do not do this on a shared machine,
 and never put that key in `config.js`.
 
-**Easiest: cut them from one file.** Drop the whole song in, video or audio, and
-every block is sliced from it at the timings the video already uses. No trimming,
-no naming, no exporting 21 clips. "Hear this block" checks the alignment and the
-nudge box shifts every slice at once if the file starts late or early, which it
-will if it has a channel bumper on the front.
+**Nothing is re-encoded.** A guide is the file you uploaded, byte for byte,
+plus a number saying where the block starts inside it. Cutting a slice and
+writing it back out meant decoding, downsampling and re-compressing something
+already exactly right, and it sounded like it.
 
-Each slice runs from one second before the block's first word to 1.5 seconds
-after its last, the same shape a take has, so guide and sweep line up. They come
-out as 32kHz mono WAV, around 10MB for a song.
+`guides/<song>/manifest.json` holds `{blockId: {file, from, len}}`. Files sit
+beside it with no extension, since what arrives may be mp3, m4a, webm or mp4.
 
-**Or trim them yourself and line them up here.** Cutting roughly around a block
-in an editor takes seconds and you can see the waveform; landing the first word
-on the beat is the fiddly part, and doing that by exporting, uploading and
-listening is a slow loop. So "Upload a clip for this block" decodes what you
-give it and holds it: `-0.1` and `+0.1` slide it, "Hear it" plays it under the
-sweep, and Save writes a window of exactly the right length. Rough trimming plus
-a couple of taps beats trying to cut frame-accurately in the editor.
+**Placing a guide** is a waveform with a draggable window. The purple ticks
+inside it mark each shout, so lining a tick up with a visible transient is the
+whole job. Play checks it against the sweep before saving.
 
-An mp3 out of CapCut is ideal. It need not be exact, or even long enough: a clip
-shorter than the block is padded with silence rather than truncated, because a
-guide that is short would shift every word in it forward.
+- **A clip for one block.** Trim roughly in an editor, drop it in, drag, save.
+  It need not be exact or even long enough.
+- **The whole song.** Drop it in and the window opens at the block's own timing.
+  Line one block up, press "Place every block from this", and however far that
+  block had to move, every other block moves the same. One file uploaded, 21
+  blocks placed, and fans fetch that one file once.
 
-Record guide still records one by voice. All three routes write to the same
-place, so they mix freely.
-
-Guides are stored with no file extension. What arrives may be webm, mp4 or wav
-depending on where it came from, the page reads the bytes rather than the name,
-and calling them all `.webm` would only be a claim that happens to be false.
+Record guide still records one by voice. All three write to the same manifest.
 
 ## Adding another song
 
