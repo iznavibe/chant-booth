@@ -54,7 +54,7 @@
    "title": "RIP",
    "blocks": 14,
    "shouts": 52,
-   "minutes": 2.4
+   "minutes": 2.5
   },
   {
    "name": "sign",
@@ -68,7 +68,7 @@
    "title": "TIMEBOMB",
    "blocks": 8,
    "shouts": 28,
-   "minutes": 1.5
+   "minutes": 1.6
   }
  ]
 }

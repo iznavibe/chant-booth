@@ -51,7 +51,27 @@ function chantFlags(sylls, fanchant) {
   return flags;
 }
 
-const strip = (t) => t.replace(/[()]/g, '');
+/**
+ * The text as a fan should read it, which is not quite how the video writes it.
+ *
+ * The video spells the group's name out, 이.즈.나.야, because that is how the
+ * karaoke sweep steps through it. Someone learning the chant off a phone wants
+ * the word. The cue to shout keeps its brackets, though: 함성 and CHEER are
+ * directions rather than lyrics, and losing the brackets made them look like
+ * something to sing.
+ */
+const NAMES = [
+  [/이[.\-·]즈[.\-·]나[.\-·]야/g, '이즈나야'],
+  [/이[.\-·]즈[.\-·]나/g, '이즈나'],
+  [/i[.\-·]z[.\-·]na[.\-·]ya/gi, 'iznaya'],
+  [/i[.\-·]z[.\-·]na/gi, 'izna'],
+];
+
+function strip(t) {
+  let out = t.replace(/[()]/g, '');
+  for (const [re, to] of NAMES) out = out.replace(re, to);
+  return /^\s*(함성|CHEER)/i.test(out) ? out.replace(/^(\s*)(.*?)(\s*)$/, '$1($2)$3') : out;
+}
 
 // Group lines by the block they are drawn in.
 const blocks = new Map();
@@ -71,7 +91,17 @@ if (cheer && cheer.appearAt !== undefined) {
   out.push({
     at: +cheer.appearAt.toFixed(2),
     dur: +(cheer.disappearAt - cheer.appearAt).toFixed(2),
-    lines: [{ w: [{ k: '함성!', r: 'CHEER!', t: 0, d: +(cheer.disappearAt - cheer.appearAt).toFixed(2), c: 1 }] }],
+    // Built by hand rather than read off a lyric line, so it has to be written
+    // the way strip() would have written it.
+    lines: [{
+      w: [{
+        k: '(함성!)',
+        r: '(CHEER!)',
+        t: 0,
+        d: +(cheer.disappearAt - cheer.appearAt).toFixed(2),
+        c: 1,
+      }],
+    }],
   });
 }
 
@@ -104,8 +134,15 @@ for (const idx of blocks.values()) {
    * the song, so the two lines it answers come back. Only ever within the same
    * block, and only where the run is too brief to orient by.
    */
+  /*
+   * A single line always gets the line before it, however long it runs.
+   *
+   * One line alone gives nothing to come in off: no phrase leading up to the
+   * entry, and nothing to tell one short answer apart from the others. Short
+   * runs take more, up to three, on the same reasoning.
+   */
   const span = () => all[last].src[all[last].src.length - 1].end - all[first].src[0].start;
-  while (first > 0 && last - first + 1 < 3 && span() < 4) first -= 1;
+  while (first > 0 && (last - first + 1 < 2 || (last - first + 1 < 3 && span() < 4))) first -= 1;
 
   const raw = all.slice(first, last + 1);
 

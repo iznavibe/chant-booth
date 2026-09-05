@@ -16,9 +16,16 @@ The unit is a **block**: one screenful of the finished video, and the same span 
 guide clip would naturally be cut to. Every block containing a fanchant is
 recorded and none are reused between similar chants.
 
-A block is trimmed to the run from its first chanting line to its last. Leading
-and trailing sung lines are izna's alone and only crowd a phone screen, but a
-sung line *between* two chants is kept: it is what a fan counts through while
+Chant text is written the way a fan should read it rather than the way the video
+writes it: the group's name loses the full stops it is swept through with, so
+이.즈.나.야 becomes 이즈나야, and the cue to shout keeps its brackets, because
+함성 and CHEER are directions rather than lyrics and without them they look like
+something to sing.
+
+A block is trimmed to the run from its first chanting line to its last. A single line always takes the one before it,
+however long it runs, since one line alone gives nothing to come in off. Leading
+and trailing sung lines are otherwise izna's alone and only crowd a phone screen,
+but a sung line *between* two chants is kept: it is what a fan counts through while
 waiting for their next entry, and without it the gap in the sweep looks like a
 mistake. Timings stay absolute either way, so the wait is real.
 
