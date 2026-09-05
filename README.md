@@ -286,6 +286,10 @@ grey. Alignment becomes something you look at rather than count. Drag a shout
 onto the transient it belongs to and it is right; being a frame out is visible
 instead of something found later by listening.
 
+The timeline spans the file and the window, whichever reaches further, so a
+block wanting more seconds than the clip has still shows its window rather than
+pushing it off the edge. The stretch with no audio behind it is drawn greyed.
+
 The window has a handle at each end. The left one sets where the block starts,
 which is what carries the words with it. The right one sets how much of the file
 plays, for cutting off whatever came after. Dragging the middle moves both. Play
@@ -299,6 +303,12 @@ checks it against the sweep before saving.
   blocks placed, and fans fetch that one file once.
 
 Record guide still records one by voice. All three write to the same manifest.
+
+## Order of work
+
+Timings live in the VibeSub project and nowhere else. Fix them there, rebuild the
+song file, then do the guides, because a guide is aligned against the sweep and
+moving the sweep afterwards puts every guide in that song out again.
 
 ## Adding another song
 

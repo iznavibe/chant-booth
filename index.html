@@ -1586,21 +1586,29 @@ function drawWave() {
   g.setTransform(dpr, 0, 0, dpr, 0, 0);
   g.clearRect(0, 0, W, TL_H);
 
-  if (!placing.peaks || placing.peaks.length !== Math.floor(W)) {
-    placing.peaks = peaksOf(placing.buf, Math.floor(W));
-  }
+  if (!placing.peaks) placing.peaks = peaksOf(placing.buf, Math.floor(W));
 
+  /*
+   * The timeline spans the file and the window, whichever reaches further.
+   *
+   * A block wanting more seconds than the clip has is normal, and mapping only
+   * the file across the canvas drew the window off the right-hand edge where it
+   * could be neither seen nor grabbed. Now the view stretches to hold both, and
+   * the part with no audio behind it is drawn as such.
+   */
   const b = CHANTS[at];
-  const total = placing.buf.duration;
-  const x = (sec) => (sec / total) * W;
+  const t0 = Math.min(0, placing.from) - 0.15;
+  const t1 = Math.max(placing.buf.duration, placing.from + placing.len) + 0.15;
+  const span = t1 - t0;
+  const x = (sec) => ((sec - t0) / span) * W;
   const left = x(placing.from);
-  const wide = Math.max(8, x(placing.len));
+  const wide = Math.max(8, x(placing.from + placing.len) - left);
 
   // ---- ruler ----
   g.fillStyle = tone('--muted');
   g.font = '10px system-ui, sans-serif';
-  const step = total > 60 ? 10 : total > 20 ? 5 : 1;
-  for (let t = 0; t <= total; t += step) {
+  const step = span > 60 ? 10 : span > 20 ? 5 : 1;
+  for (let t = Math.ceil(t0 / step) * step; t <= t1; t += step) {
     const tx = x(t);
     g.globalAlpha = 0.5;
     g.fillRect(tx, 0, 1, 6);
@@ -1610,14 +1618,26 @@ function drawWave() {
   }
   g.globalAlpha = 1;
 
-  // ---- waveform, quiet outside the window ----
+  // ---- anywhere the file does not reach ----
   const mid = WAVE_TOP + WAVE_H / 2;
+  g.fillStyle = tone('--edge');
+  g.globalAlpha = 0.5;
+  if (t0 < 0) g.fillRect(0, WAVE_TOP, x(0), WAVE_H);
+  if (t1 > placing.buf.duration) {
+    g.fillRect(x(placing.buf.duration), WAVE_TOP, W - x(placing.buf.duration), WAVE_H);
+  }
+  g.globalAlpha = 1;
+
+  // ---- waveform, quiet outside the window ----
+  const from0 = x(0);
+  const wavW = x(placing.buf.duration) - from0;
   placing.peaks.forEach((p, i) => {
-    const inside = i >= left && i <= left + wide;
+    const px = from0 + (i / placing.peaks.length) * wavW;
+    const inside = px >= left && px <= left + wide;
     g.fillStyle = inside ? tone('--pink') : tone('--muted');
     g.globalAlpha = inside ? 1 : 0.3;
     const h = Math.max(1, p * (WAVE_H - 6));
-    g.fillRect(i, mid - h / 2, 1, h);
+    g.fillRect(px, mid - h / 2, Math.max(1, wavW / placing.peaks.length), h);
   });
   g.globalAlpha = 1;
 
@@ -1679,11 +1699,17 @@ function showPlacing() {
   const cv = $('wave');
   let mode = null;
   let grab = 0;
+  const view = () => {
+    const t0 = Math.min(0, placing.from) - 0.15;
+    const t1 = Math.max(placing.buf.duration, placing.from + placing.len) + 0.15;
+    return [t0, t1 - t0];
+  };
   const secAt = (e) => {
     const r = cv.getBoundingClientRect();
-    return ((e.clientX - r.left) / r.width) * (placing ? placing.buf.duration : 1);
+    const [t0, span] = view();
+    return t0 + ((e.clientX - r.left) / r.width) * span;
   };
-  const edge = () => (placing ? (10 / cv.clientWidth) * placing.buf.duration : 0);
+  const edge = () => (10 / cv.clientWidth) * view()[1];
 
   cv.addEventListener('pointerdown', (e) => {
     if (!placing) return;
@@ -1702,14 +1728,15 @@ function showPlacing() {
     if (!mode || !placing) return;
     const t = secAt(e);
     if (mode === 'move') {
-      placing.from = Math.max(-PRE, Math.min(placing.buf.duration - 0.5, t - grab));
+      placing.from = Math.max(-guideLength(CHANTS[at]),
+        Math.min(placing.buf.duration - 0.25, t - grab));
     } else if (mode === 'left') {
       // Moving the start moves the words with it; the end stays put.
       const end = placing.from + placing.len;
       placing.from = Math.max(-PRE, Math.min(end - 0.5, t));
       placing.len = end - placing.from;
     } else {
-      placing.len = Math.max(0.5, Math.min(placing.buf.duration - placing.from, t - placing.from));
+      placing.len = Math.max(0.5, t - placing.from);
     }
     showPlacing();
   });
@@ -1740,6 +1767,11 @@ async function uploadGuide(e) {
       ? b.at - PRE
       : Math.min(Math.max(0, buf.duration - guideLength(b)) / 2, PRE);
     placing = { file, buf, from, len: guideLength(b), peaks: null };
+    if (buf.duration < guideLength(b) - 0.05) {
+      note(`This clip is ${buf.duration.toFixed(1)}s and the block wants ` +
+        `${guideLength(b).toFixed(1)}s. The rest will be silence, which is fine, ` +
+        'but a longer cut would be better.');
+    }
     showPlacing();
     $('guide-note').textContent = buf.duration >= 45
       ? 'Whole song. Line one block up, then place every block from it.'
