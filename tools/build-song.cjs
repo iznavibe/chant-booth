@@ -292,7 +292,13 @@ for (const idx of blocks.values()) {
    */
   const chantEnd = () => Math.max(...all.slice(first, last + 1)
     .flatMap((l) => l.src.filter((s, j) => l.mine[j]).map((s) => s.end)));
-  while (last + 1 < all.length && all[last + 1].src[0].start < chantEnd() - 0.05) last += 1;
+  const lineEnd = (n) => all[n].src[all[n].src.length - 1].end;
+  // Only where the chant really runs past the line it is written on. A chant
+  // ending with its own line has not outlasted anything, and the line after it
+  // merely overlaps, which is a different thing and not the block's business.
+  while (last + 1 < all.length
+    && chantEnd() > lineEnd(last) + 0.05
+    && all[last + 1].src[0].start < chantEnd() - 0.05) last += 1;
 
   /*
    * A line sung at the same time as a chant comes with it.
@@ -308,8 +314,26 @@ for (const idx of blocks.values()) {
     first -= 1;
   }
 
+  /*
+   * A line whose chant lands almost at once needs the line before it.
+   *
+   * "Y O U" and BEEP's last block open on the shout, so there is nothing to
+   * come in off and the previous line has to supply it. A line that sings for
+   * a while before its own chant already provides that, and taking another line
+   * only crowds the screen with words nobody is being asked to shout.
+   *
+   * The second rule is for a pair of lines that goes by too fast to read, which
+   * is a different complaint and only ever applies to a pair.
+   */
+  const leadIn = () => {
+    const l = all[first];
+    const at = l.src.findIndex((u, j) => l.mine[j]);
+    return at < 0 ? 0 : l.src[at].start - l.src[0].start;
+  };
   const span = () => all[last].src[all[last].src.length - 1].end - all[first].src[0].start;
-  while (first > 0 && (last - first + 1 < 2 || (last - first + 1 < 3 && span() < 4))) first -= 1;
+  while (first > 0
+    && ((last - first + 1 < 2 && leadIn() < 1)
+      || (last - first + 1 === 2 && span() < 4))) first -= 1;
 
   const raw = all.slice(first, last + 1);
 

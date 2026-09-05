@@ -1809,7 +1809,25 @@ $('guide-redo').addEventListener('click', async () => {
   if (!old.length) { $('guide-note').textContent = 'No guides in this song yet.'; return; }
   $('guide-redo').disabled = true;
   try {
-    old.forEach((b) => {
+    /*
+     * A whole song is placed once and every block reads from the same offset,
+     * so that offset can be recovered even after a block's timings change: take
+     * it from the middle of what the guides currently say, which is unmoved by
+     * the few that shifted, and put every block back on it. Guides cut per
+     * block are left where they were put, since each was cut for its own block
+     * and nothing here can re-cut them.
+     */
+    const fromSong = old.filter((b) => guideAt[b.id].file === '_song');
+    if (fromSong.length) {
+      const shifts = fromSong
+        .map((b) => (guideAt[b.id].mark === undefined ? guideAt[b.id].from : guideAt[b.id].mark) - b.at)
+        .sort((x, y) => x - y);
+      const shift = shifts[Math.floor(shifts.length / 2)];
+      fromSong.forEach((b) => {
+        guideAt[b.id] = { file: '_song', ...windowFor(b.at + shift, b, guideAt[b.id].run) };
+      });
+    }
+    old.filter((b) => guideAt[b.id].file !== '_song').forEach((b) => {
       const was = guideAt[b.id];
       const mark = was.mark === undefined ? was.from : was.mark;
       guideAt[b.id] = { file: was.file, ...windowFor(mark, b, was.run) };
