@@ -293,6 +293,14 @@ trim times and the window lands at 0 with no dragging.
 **Placing a guide is one mark: where the first word is sung.** Drag the line onto
 it. That is the whole interaction.
 
+**How much comes before the first word is set per block**, one second by default
+and up to eight. One second is the shape a take has and suits most blocks; a
+chant that rides in on something wants more of it to come in on. The extra plays
+before the words start moving, so the run-in is heard and then the sweep begins
+where it always does: whatever the run-up, the first word lands exactly one
+second into the sweep. It can be changed on a block already placed without
+loading its file again, since the mark is in the manifest.
+
 Everything follows from that mark. Whatever runs up to it is played under the
 count, so an intro leading into a cheer is heard the way it is in the song and a
 fan has something to come in on. Only what the file cannot supply is silence, so

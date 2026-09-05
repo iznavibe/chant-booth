@@ -457,6 +457,14 @@
       <canvas id="wave" hidden style="width:100%;height:156px;touch-action:none;
               border-radius:12px;background:var(--sunk);cursor:grab"></canvas>
       <p class="muted" id="wave-at" hidden></p>
+      <label class="modeRow" id="run-row" hidden
+             style="display:flex;align-items:center;gap:10px">
+        <span class="muted" style="flex:1">Start this much before the first word</span>
+        <button class="ghost icon" id="run-less">-</button>
+        <span id="run-at" style="min-width:56px;text-align:center;font-family:var(--display);
+              font-weight:600">1.0s</span>
+        <button class="ghost icon" id="run-more">+</button>
+      </label>
       <button class="ghost full" id="guide-snap" hidden>First word is at the very start</button>
       <div class="row" id="guide-acts" hidden>
         <button class="ghost" id="guide-hear">Play</button>
@@ -1297,13 +1305,22 @@ const guideLength = (b) => PRE + b.dur + TAIL;
  * the file cannot supply is silence, so a clip cut hard to the first word still
  * gets its beat of quiet and everything lines up either way.
  */
-function windowFor(mark, b) {
-  const want = mark - PRE;
-  // `mark` is kept alongside so the window can be worked out again later,
+function windowFor(mark, b, run) {
+  const up = run === undefined ? PRE : Math.max(PRE, run);
+  const want = mark - up;
+  const lead = want >= 0 ? 0 : -want;
+  // `mark` and `run` are kept alongside so the window can be worked out again,
   // which is how a guide placed under older rules is brought forward.
-  return want >= 0
-    ? { mark, from: want, len: guideLength(b), lead: 0 }
-    : { mark, from: 0, len: guideLength(b) + want, lead: -want };
+  return {
+    mark,
+    run: up,
+    from: Math.max(0, want),
+    len: up + b.dur + TAIL - lead,
+    lead,
+    // How long the words wait while the extra run-up plays. The sweep still
+    // starts one second before the first word, whatever comes in front of it.
+    hold: +(up - PRE).toFixed(2),
+  };
 }
 
 /** Where every block's guide lives for this song. One fetch, at load. */
@@ -1363,7 +1380,8 @@ async function listen() {
       // A voice guide beats a click: it carries the words, not just the beat.
       setStatus('Listen…');
       playWindow(buf, where.from, where.len, where.lead || 0);
-      sweep(c, done);
+      if (where.hold > 0) setTimeout(() => sweep(c, done), where.hold * 1000);
+      else sweep(c, done);
       return;
     }
   }
@@ -1641,7 +1659,7 @@ function drawWave() {
   g.globalAlpha = 1;
 
   // ---- what will be heard: the run-up, then the block ----
-  const runUp = Math.min(PRE, placing.mark);
+  const runUp = Math.min(placing.run, placing.mark);
   g.fillStyle = tone('--pink-wash');
   g.globalAlpha = 0.5;
   g.fillRect(mark - dx(runUp), WAVE_TOP - 3, dx(runUp), WAVE_H + 6);
@@ -1699,11 +1717,22 @@ function drawWave() {
 function showPlacing() {
   const on = !!placing;
   ['wave', 'wave-at', 'guide-acts', 'guide-snap'].forEach((id) => { $(id).hidden = !on; });
+
+  // The run-up can be changed on a block already placed, without loading its
+  // file again: the mark is in the manifest, so the window can be worked out
+  // afresh from a different run-up.
+  const saved = guideAt[CHANTS[at].id];
+  const canRun = on || (saved && saved.mark !== undefined);
+  $('run-row').hidden = !canRun;
+  if (canRun) {
+    $('run-at').textContent = (on ? placing.run : saved.run || PRE).toFixed(1) + 's';
+  }
+  if (!on) return;
   $('guide-all').hidden = !on || placing.buf.duration < 45;
   if (!on) return;
   const b = CHANTS[at];
   const off = placing.mark - b.at;
-  const runUp = Math.min(PRE, placing.mark);
+  const runUp = Math.min(placing.run, placing.mark);
   $('wave-at').textContent =
     `${placing.file.name} · first word at ${placing.mark.toFixed(2)}s · ` +
     (runUp > 0.02 ? `${runUp.toFixed(2)}s of run-up before it` : 'no run-up, so a silent count') +
@@ -1753,7 +1782,7 @@ async function uploadGuide(e) {
     const Off = window.OfflineAudioContext || window.webkitOfflineAudioContext;
     const buf = await new Off(1, 1, 44100).decodeAudioData(await file.arrayBuffer());
     const b = CHANTS[at];
-    placing = { file, buf, mark: buf.duration >= 45 ? b.at : 0, peaks: null };
+    placing = { file, buf, mark: buf.duration >= 45 ? b.at : 0, run: PRE, peaks: null };
     showPlacing();
     $('guide-note').textContent = buf.duration >= 45
       ? 'Whole song. Line one block up, then place every block from it.'
@@ -1793,6 +1822,45 @@ $('guide-redo').addEventListener('click', async () => {
   $('guide-redo').disabled = false;
 });
 
+/**
+ * How much comes before the first word.
+ *
+ * One second is the shape a take has, and most blocks want exactly that. An
+ * opening cheer is the exception: it rides in on the intro, and a fan needs to
+ * hear enough of that to know where the shout falls. The extra plays before the
+ * words start moving, so the run-in is heard and then the sweep begins where it
+ * always does.
+ */
+async function setRun(by) {
+  const b = CHANTS[at];
+  const clamp = (v) => Math.max(PRE, Math.min(8, +(v).toFixed(1)));
+
+  if (placing) {
+    placing.run = clamp(placing.run + by);
+    showPlacing();
+    return;
+  }
+
+  const saved = guideAt[b.id];
+  if (!saved || saved.mark === undefined) return;
+  const run = clamp((saved.run || PRE) + by);
+  const was = guideAt[b.id];
+  guideAt[b.id] = { file: was.file, ...windowFor(was.mark, b, run) };
+  $('run-at').textContent = run.toFixed(1) + 's';
+  try {
+    await writeGuideMap();
+    $('guide-note').textContent = `Block ${at + 1} now starts ${run.toFixed(1)}s before the words.`;
+  } catch (err) {
+    guideAt[b.id] = was;
+    showPlacing();
+    $('guide-note').textContent = locked(err.message)
+      ? 'Guides are locked. Paste the service_role key above.'
+      : 'That did not save: ' + err.message;
+  }
+}
+$('run-less').addEventListener('click', () => setRun(-0.5));
+$('run-more').addEventListener('click', () => setRun(0.5));
+
 $('guide-snap').addEventListener('click', () => {
   if (!placing) return;
   placing.mark = 0;
@@ -1802,9 +1870,10 @@ $('guide-snap').addEventListener('click', () => {
 $('guide-hear').addEventListener('click', () => {
   if (!placing || busy) return;
   const b = CHANTS[at];
-  const w = windowFor(placing.mark, b);
+  const w = windowFor(placing.mark, b, placing.run);
   playWindow(placing.buf, w.from, w.len, w.lead);
-  sweep(b, () => {});
+  if (w.hold > 0) setTimeout(() => sweep(b, () => {}), w.hold * 1000);
+  else sweep(b, () => {});
 });
 
 /** Send the file once, then say where each block sits inside it. */
@@ -1821,7 +1890,9 @@ $('guide-save').addEventListener('click', async () => {
   $('guide-save').disabled = true;
   $('guide-note').textContent = 'Saving…';
   try {
-    await saveGuideFile(b.id, { [b.id]: { file: b.id, ...windowFor(placing.mark, b) } });
+    await saveGuideFile(b.id, {
+      [b.id]: { file: b.id, ...windowFor(placing.mark, b, placing.run) },
+    });
     $('guide-note').textContent = `Block ${at + 1} done. Press Guide to hear it as a fan will.`;
     placing = null;
     showPlacing();
@@ -1842,7 +1913,9 @@ $('guide-all').addEventListener('click', async () => {
   try {
     const entries = {};
     CHANTS.forEach((x) => {
-      entries[x.id] = { file: '_song', ...windowFor(x.at + shift, x) };
+      // The run-up chosen here is this block's; the rest keep the usual second.
+      const run = x.id === CHANTS[at].id ? placing.run : PRE;
+      entries[x.id] = { file: '_song', ...windowFor(x.at + shift, x, run) };
     });
     await saveGuideFile('_song', entries);
     $('guide-note').textContent =
@@ -1890,6 +1963,7 @@ function goto(i) {
   $('meter-fill').style.width = '0%';
   buttons(true);
   showTimes();
+  if (GUIDE) showPlacing();
 }
 
 /**
@@ -2103,6 +2177,7 @@ async function loadSong(name) {
   $('title').textContent = GUIDE ? 'Guides' : 'VibeChant';
   if (GUIDE) {
     $('guidebox').hidden = false;
+    showPlacing();
     $('guide-redo').hidden =
       !Object.values(guideAt).some((e) => e && e.mark === undefined);
     // Nothing here is a take, so the way to the take list is noise.
