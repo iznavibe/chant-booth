@@ -61,10 +61,10 @@ function chantFlags(sylls, fanchant) {
  * something to sing.
  */
 const NAMES = [
-  [/이[.\-·]즈[.\-·]나[.\-·]야/g, '이즈나야'],
-  [/이[.\-·]즈[.\-·]나/g, '이즈나'],
-  [/i[.\-·]z[.\-·]na[.\-·]ya/gi, 'iznaya'],
-  [/i[.\-·]z[.\-·]na/gi, 'izna'],
+  [/이[.\-·!]즈[.\-·!]나[.\-·!]야/g, '이즈나야'],
+  [/이[.\-·!]즈[.\-·!]나/g, '이즈나'],
+  [/i[.\-·!]z[.\-·!]na[.\-·!]ya/gi, 'iznaya'],
+  [/i[.\-·!]z[.\-·!]na/gi, 'izna'],
 ];
 
 /**
@@ -161,6 +161,25 @@ function strip(t) {
  * because the video sometimes cuts the cue itself in two and half of it would
  * not be recognised on its own.
  */
+/**
+ * A name keeps the same punctuation on both rows.
+ *
+ * The lyric writes 이즈나! and its romaji izna, because the two rows were typed
+ * separately and the exclamation only made it onto one of them. It is the same
+ * shout either way.
+ */
+function matchNamePunctuation(words) {
+  return words.map((w) => {
+    if (!WHOLE.includes(bare(w.k)) && !WHOLE.includes(bare(w.r))) return w;
+    const tail = (t) => (/([!?]+)\s*$/.exec(t) || ['', ''])[1];
+    const kt = tail(w.k);
+    const rt = tail(w.r);
+    if (kt && !rt && w.r) return { ...w, r: w.r.replace(/\s*$/, '') + kt };
+    if (rt && !kt && w.k) return { ...w, k: w.k.replace(/\s*$/, '') + rt };
+    return w;
+  });
+}
+
 function bracketCues(words) {
   const isCue = (t) => /^(함성|cheer)$/i.test(bare(t));
   return words.map((w) => {
@@ -275,6 +294,25 @@ for (const idx of blocks.values()) {
   const start = Math.min(...raw.map((l) => l.src[0].start));
   const end = Math.max(...raw.map((l) => l.src[l.src.length - 1].end));
 
+  /*
+   * Lines are shown in the order they happen, not the order they are stored.
+   *
+   * A chant sung over a line is a separate line in the project, kept after the
+   * one it covers, and it often begins first: the crowd comes in ahead of the
+   * words it answers. Where two begin together the longer one leads, since it
+   * is the frame the other sits inside, and where they are identical the
+   * project's own order stands.
+   */
+  raw.sort((x, y) => {
+    const a = x.src[0].start - y.src[0].start;
+    if (Math.abs(a) > 0.05) return a;
+    // Both tests are loose on purpose. Two lines drawn as one moment are timed
+    // by hand and land a hundredth apart, which is not an order, and reading
+    // one as an order swaps a pair that was already right.
+    const b = y.src[y.src.length - 1].end - x.src[x.src.length - 1].end;
+    return Math.abs(b) > 0.25 ? b : 0;
+  });
+
   const lines = raw.map(({ i, src, mine }) => {
     const roRaw = (p.romaji && p.romaji.lines[i] && p.romaji.lines[i].syllables) || [];
     /*
@@ -356,7 +394,7 @@ for (const idx of blocks.values()) {
     });
 
     return {
-      w: bracketCues(joinNames(tidyCommas(groups.map((g, n) => {
+      w: bracketCues(matchNamePunctuation(joinNames(tidyCommas(groups.map((g, n) => {
         const first = g.units[0];
         const last = g.units[g.units.length - 1];
         return {
@@ -369,7 +407,7 @@ for (const idx of blocks.values()) {
           // Not the fan's to sing, but they need to see where they land on it.
           s: g.units.some((u) => u.strike) ? 1 : 0,
         };
-      })))),
+      }))))),
     };
   });
 
