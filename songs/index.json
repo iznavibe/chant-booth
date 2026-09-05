@@ -25,14 +25,14 @@
    "name": "izna",
    "title": "IZNA",
    "blocks": 15,
-   "shouts": 112,
+   "shouts": 110,
    "minutes": 2.8
   },
   {
    "name": "mammamia",
    "title": "Mamma Mia",
    "blocks": 16,
-   "shouts": 52,
+   "shouts": 51,
    "minutes": 2.3
   },
   {
@@ -67,7 +67,7 @@
    "name": "timebomb",
    "title": "TIMEBOMB",
    "blocks": 8,
-   "shouts": 28,
+   "shouts": 27,
    "minutes": 1.6
   }
  ]

@@ -83,6 +83,21 @@ const WHOLE = [
 ];
 const bare = (t) => t.replace(/[^\p{L}\p{N}]/gu, '').toLowerCase();
 
+/**
+ * How many syllables a piece of romaji is worth.
+ *
+ * Used only as a ceiling on how many lyric syllables may be folded into one
+ * word. Where a romaji row's timings are loose, one word can appear to cover a
+ * syllable belonging to the next, and 하늘 위로 comes out as 하늘위 and 로.
+ * Counting nuclei stops the fold before it reaches that far. Korean vowels are
+ * often two letters, so the digraphs are listed before the single ones.
+ */
+const NUCLEUS = /(?:yeo|weo|wae|yae|eo|eu|ae|oe|ui|wa|we|wi|ya|yo|yu|ye|[aeiou])/g;
+function syllablesIn(text) {
+  const m = text.toLowerCase().match(NUCLEUS);
+  return m ? m.length : 1;
+}
+
 function joinNames(words) {
   const out = [];
   for (let i = 0; i < words.length; i += 1) {
@@ -117,17 +132,18 @@ function joinNames(words) {
  * comma ends the name in front of it, so that is where it goes.
  */
 function tidyCommas(words) {
-  for (let i = 1; i < words.length; i += 1) {
-    const m = /^([,.!?;:]+)\s*/.exec(words[i].k);
-    if (!m || !words[i - 1].k) continue;
-    words[i].k = words[i].k.slice(m[0].length);
-    words[i - 1].k = words[i - 1].k.replace(/\s*$/, '') + m[1];
-    const mr = /^([,.!?;:]+)\s*/.exec(words[i].r);
-    if (mr && words[i - 1].r) {
-      words[i].r = words[i].r.slice(mr[0].length);
-      words[i - 1].r = words[i - 1].r.replace(/\s*$/, '') + mr[1];
+  const shift = (key) => {
+    for (let i = 1; i < words.length; i += 1) {
+      const m = /^([,.!?;:]+)\s*/.exec(words[i][key]);
+      if (!m || !words[i - 1][key]) continue;
+      words[i][key] = words[i][key].slice(m[0].length);
+      words[i - 1][key] = words[i - 1][key].replace(/\s*$/, '') + m[1];
     }
-  }
+  };
+  // The two rows are punctuated independently: a comma can lead the romaji
+  // while the lyric above it has none, so each is walked on its own.
+  shift('k');
+  shift('r');
   return words.filter((w) => w.k.trim().length || w.r.trim().length);
 }
 
@@ -277,43 +293,83 @@ for (const idx of blocks.values()) {
     }
 
     /*
-     * Every romaji finds a word, rather than every word finding a romaji.
+     * Every romaji finds a word, and words sharing one become one.
      *
-     * The rows are cut independently, and either can be the finer of the two.
-     * 하늘 위로 is four syllables against two romaji words; "최정은 정세비
-     * 이즈나야" is three words against five. Asking each word for its best
-     * romaji quietly drops the extras, which is how "Jeong" and "iznaya!" went
-     * missing. Asking instead where each romaji belongs loses nothing: a word
-     * that draws several keeps them all, and one that draws none is blank.
+     * The rows are cut independently and either can be the finer. Where the
+     * romaji is finer, asking each word for its single best romaji drops the
+     * extras, so instead each romaji is asked which word it belongs to and a
+     * word that draws several keeps them all.
      *
-     * Rows are kept apart, since a chant sung over a line is a second row
-     * covering the same seconds as the words underneath it.
+     * Where the lyric is the finer, the reverse shows up on screen: 다음은 is
+     * one romaji word but three syllables in the lyric, and left alone it reads
+     * as three things with the romaji under the first. Syllables that share a
+     * romaji are therefore one word, which is what they are.
+     *
+     * Rows are kept apart, since a chant sung over a line covers the same
+     * seconds as the words underneath it.
      */
     const rowOf = (u) => u.row || 0;
-    const parts = src.map(() => []);
+    const overlap = (x, y) => Math.min(x.end, y.end) - Math.max(x.start, y.start);
+
+    // Which romaji each word sits under, whether or not it is the only one.
+    const owner = src.map((u) => {
+      if (even) return -1;
+      let best = -1;
+      let most = 0;
+      roRaw.forEach((r, k) => {
+        if (rowOf(r) !== rowOf(u)) return;
+        const over = overlap(u, r);
+        if (over > most) { most = over; best = k; }
+      });
+      return best;
+    });
+
+    // Runs of words under the same romaji are one word, up to as many
+    // syllables as that romaji actually has.
+    const groups = [];
+    src.forEach((u, n) => {
+      const prev = groups[groups.length - 1];
+      const room = owner[n] >= 0 ? syllablesIn(roRaw[owner[n]].text) : 1;
+      if (prev
+        && owner[n] >= 0
+        && owner[n] === owner[prev.at]
+        && rowOf(u) === rowOf(src[prev.at])
+        && prev.units.length < room) {
+        prev.units.push(u);
+      } else {
+        groups.push({ at: n, units: [u] });
+      }
+    });
+
+    // And every romaji goes to the group it belongs to.
+    const parts = groups.map(() => []);
     roRaw.forEach((r) => {
       let best = -1;
       let most = 0;
-      src.forEach((s, n) => {
-        if (rowOf(s) !== rowOf(r)) return;
-        const over = Math.min(s.end, r.end) - Math.max(s.start, r.start);
+      groups.forEach((g, n) => {
+        if (rowOf(src[g.at]) !== rowOf(r)) return;
+        const span = { start: g.units[0].start, end: g.units[g.units.length - 1].end };
+        const over = overlap(span, r);
         if (over > most) { most = over; best = n; }
       });
       if (best >= 0) parts[best].push(r.text);
     });
-    const ro = src.map((s, n) => (even ? roRaw[n] : (parts[n].length ? { text: parts[n].join('') } : undefined)));
 
     return {
-      w: bracketCues(joinNames(tidyCommas(src.map((s, j) => ({
-        k: strip(s.text).trim(),
-        r: strip((ro[j] && ro[j].text) || '').trim(),
-        t: +(s.start - start).toFixed(2),
-        d: +(s.end - s.start).toFixed(2),
-        c: mine[j] ? 1 : 0,
-        // Struck through in the video: izna's word that the chant talks over.
-        // Not the fan's to sing, but they need to see where they land on it.
-        s: s.strike ? 1 : 0,
-      }))))),
+      w: bracketCues(joinNames(tidyCommas(groups.map((g, n) => {
+        const first = g.units[0];
+        const last = g.units[g.units.length - 1];
+        return {
+          k: strip(g.units.map((u) => u.text).join('')).trim(),
+          r: strip(even ? ((roRaw[g.at] && roRaw[g.at].text) || '') : parts[n].join('')).trim(),
+          t: +(first.start - start).toFixed(2),
+          d: +(last.end - first.start).toFixed(2),
+          c: g.units.some((u, m) => mine[g.at + m]) ? 1 : 0,
+          // Struck through in the video: izna's word that the chant talks over.
+          // Not the fan's to sing, but they need to see where they land on it.
+          s: g.units.some((u) => u.strike) ? 1 : 0,
+        };
+      })))),
     };
   });
 
