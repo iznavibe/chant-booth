@@ -280,9 +280,16 @@ video does; the trim times are those plus the one second of lead-in and 1.5
 seconds of tail every guide carries, and they are the ones to cut to. Cut to the
 trim times and the window lands at 0 with no dragging.
 
-**Placing a guide** is a waveform with a draggable window. The purple ticks
-inside it mark each shout, so lining a tick up with a visible transient is the
-whole job. Play checks it against the sweep before saving.
+**Placing a guide** is a small timeline: a ruler, the waveform, and every word of
+the block laid out at the second it is sung, shouts in pink and izna's lines
+grey. Alignment becomes something you look at rather than count. Drag a shout
+onto the transient it belongs to and it is right; being a frame out is visible
+instead of something found later by listening.
+
+The window has a handle at each end. The left one sets where the block starts,
+which is what carries the words with it. The right one sets how much of the file
+plays, for cutting off whatever came after. Dragging the middle moves both. Play
+checks it against the sweep before saving.
 
 - **A clip for one block.** Trim roughly in an editor, drop it in, drag, save.
   It need not be exact or even long enough.

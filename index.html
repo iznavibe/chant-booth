@@ -452,7 +452,7 @@
       <p class="muted" id="guide-note">
         A clip for this block, or the whole song to place every block from.
       </p>
-      <canvas id="wave" hidden style="width:100%;height:96px;touch-action:none;
+      <canvas id="wave" hidden style="width:100%;height:156px;touch-action:none;
               border-radius:12px;background:var(--sunk);cursor:grab"></canvas>
       <p class="muted" id="wave-at" hidden></p>
       <div class="row" id="guide-acts" hidden>
@@ -1553,24 +1553,38 @@ function peaksOf(buf, columns) {
   return out;
 }
 
+/* The three bands of the timeline, top to bottom. */
+const RULER = 16;
+const WAVE_TOP = 20;
+const WAVE_H = 74;
+const WORDS_TOP = 102;
+const WORDS_H = 46;
+const TL_H = 156;
+
 /**
- * The waveform, with the block's window over it and its words marked.
+ * A timeline: a ruler, the waveform, and the words laid out in time.
  *
- * The ticks are what make this quicker than nudging blind: a shout is a visible
- * transient, so lining a tick up with one is the whole job.
+ * The point is to make alignment something you can see rather than count.
+ * Every word sits at the second it is sung, so a shout can be dragged onto the
+ * transient it belongs to, and being a frame out is visible rather than
+ * something you find later by listening.
+ *
+ * The window has a handle at each end. The left one sets where the block
+ * starts, which is what moves the words; the right one sets how much of the
+ * file plays, for cutting off whatever came after.
  */
 function drawWave() {
   const cv = $('wave');
-  if (!placing || cv.hidden) return;
+  if (!placing || cv.hidden || !cv.clientWidth) return;
   const css = getComputedStyle(document.documentElement);
+  const tone = (n) => css.getPropertyValue(n).trim();
   const dpr = Math.min(2, window.devicePixelRatio || 1);
   const W = cv.clientWidth;
-  const H = 96;
   cv.width = W * dpr;
-  cv.height = H * dpr;
+  cv.height = TL_H * dpr;
   const g = cv.getContext('2d');
   g.setTransform(dpr, 0, 0, dpr, 0, 0);
-  g.clearRect(0, 0, W, H);
+  g.clearRect(0, 0, W, TL_H);
 
   if (!placing.peaks || placing.peaks.length !== Math.floor(W)) {
     placing.peaks = peaksOf(placing.buf, Math.floor(W));
@@ -1579,39 +1593,71 @@ function drawWave() {
   const b = CHANTS[at];
   const total = placing.buf.duration;
   const x = (sec) => (sec / total) * W;
-  const len = guideLength(b);
-
-  // Everything outside the window, quietly.
-  g.fillStyle = css.getPropertyValue('--muted').trim();
-  g.globalAlpha = 0.35;
-  placing.peaks.forEach((p, i) => {
-    const h = Math.max(1, p * (H - 16));
-    g.fillRect(i, (H - h) / 2, 1, h);
-  });
-
-  // The window itself, and the part of the wave inside it.
   const left = x(placing.from);
-  const wide = Math.max(6, x(len));
+  const wide = Math.max(8, x(placing.len));
+
+  // ---- ruler ----
+  g.fillStyle = tone('--muted');
+  g.font = '10px system-ui, sans-serif';
+  const step = total > 60 ? 10 : total > 20 ? 5 : 1;
+  for (let t = 0; t <= total; t += step) {
+    const tx = x(t);
+    g.globalAlpha = 0.5;
+    g.fillRect(tx, 0, 1, 6);
+    g.globalAlpha = 0.8;
+    const m = Math.floor(t / 60);
+    g.fillText(`${m}:${String(Math.round(t - m * 60)).padStart(2, '0')}`, tx + 3, 12);
+  }
   g.globalAlpha = 1;
-  g.fillStyle = css.getPropertyValue('--pink-wash').trim();
-  g.fillRect(left, 0, wide, H);
-  g.fillStyle = css.getPropertyValue('--pink').trim();
+
+  // ---- waveform, quiet outside the window ----
+  const mid = WAVE_TOP + WAVE_H / 2;
   placing.peaks.forEach((p, i) => {
-    if (i < left || i > left + wide) return;
-    const h = Math.max(1, p * (H - 16));
-    g.fillRect(i, (H - h) / 2, 1, h);
+    const inside = i >= left && i <= left + wide;
+    g.fillStyle = inside ? tone('--pink') : tone('--muted');
+    g.globalAlpha = inside ? 1 : 0.3;
+    const h = Math.max(1, p * (WAVE_H - 6));
+    g.fillRect(i, mid - h / 2, 1, h);
   });
+  g.globalAlpha = 1;
 
-  // Edges of the window, and where the first word falls inside it.
-  g.strokeStyle = css.getPropertyValue('--pink').trim();
+  // ---- the window, and a handle at each end ----
+  g.strokeStyle = tone('--pink');
   g.lineWidth = 2;
-  g.strokeRect(left, 1, wide, H - 2);
-
-  g.fillStyle = css.getPropertyValue('--purple').trim();
-  b.lines.flatMap((l) => l.w).filter((w) => w.c).forEach((w) => {
-    const tx = left + x(PRE + w.t);
-    g.fillRect(tx, 0, 2, H);
+  g.strokeRect(left, WAVE_TOP - 3, wide, WAVE_H + 6);
+  g.fillStyle = tone('--pink');
+  [left, left + wide].forEach((hx) => {
+    g.fillRect(hx - 3, WAVE_TOP - 3, 6, WAVE_H + 6);
+    g.fillStyle = tone('--card');
+    g.fillRect(hx - 1, mid - 8, 1, 16);
+    g.fillStyle = tone('--pink');
   });
+
+  // ---- the words, where they will be sung ----
+  g.font = '600 11px system-ui, sans-serif';
+  g.textBaseline = 'middle';
+  const words = b.lines.flatMap((l, row) => l.w.map((w) => ({ ...w, row })));
+  const rows = Math.max(1, b.lines.length);
+  const rowH = Math.min(16, WORDS_H / rows);
+  words.forEach((w) => {
+    const wx = left + x(PRE + w.t);
+    const ww = Math.max(2, x(w.d));
+    const wy = WORDS_TOP + w.row * rowH;
+    g.fillStyle = w.c ? tone('--pink') : tone('--muted');
+    g.globalAlpha = w.c ? 1 : 0.45;
+    g.fillRect(wx, wy, ww, rowH - 2);
+    if (w.c && ww > 26) {
+      g.globalAlpha = 1;
+      g.fillStyle = tone('--card');
+      g.save();
+      g.beginPath();
+      g.rect(wx, wy, ww, rowH - 2);
+      g.clip();
+      g.fillText(w.k, wx + 3, wy + (rowH - 2) / 2);
+      g.restore();
+    }
+  });
+  g.globalAlpha = 1;
 }
 
 function showPlacing() {
@@ -1620,39 +1666,55 @@ function showPlacing() {
   $('guide-all').hidden = !on || placing.buf.duration < 45;
   if (!on) return;
   const b = CHANTS[at];
+  const off = placing.from - (b.at - PRE);
   $('wave-at').textContent =
-    `${placing.file.name} · block starts at ${placing.from.toFixed(2)}s of ` +
-    `${placing.buf.duration.toFixed(1)}s · purple marks each shout`;
+    `${placing.file.name} · plays ${placing.from.toFixed(2)}s to ` +
+    `${(placing.from + placing.len).toFixed(2)}s` +
+    (placing.buf.duration >= 45 ? ` · ${off >= 0 ? '+' : ''}${off.toFixed(2)}s off the timings` : '');
   drawWave();
 }
 
-/** Drag the window along the file. */
+/** Drag the window, or either of its ends. */
 (function dragging() {
   const cv = $('wave');
-  let grab = null;
-  const at_ = (e) => {
+  let mode = null;
+  let grab = 0;
+  const secAt = (e) => {
     const r = cv.getBoundingClientRect();
     return ((e.clientX - r.left) / r.width) * (placing ? placing.buf.duration : 1);
   };
+  const edge = () => (placing ? (10 / cv.clientWidth) * placing.buf.duration : 0);
+
   cv.addEventListener('pointerdown', (e) => {
     if (!placing) return;
     cv.setPointerCapture(e.pointerId);
-    grab = at_(e) - placing.from;
-    // A tap outside the window jumps it there instead of nudging.
-    if (grab < 0 || grab > guideLength(CHANTS[at])) {
-      placing.from = at_(e) - guideLength(CHANTS[at]) / 2;
-      grab = guideLength(CHANTS[at]) / 2;
-    }
-    cv.style.cursor = 'grabbing';
+    const t = secAt(e);
+    const end = placing.from + placing.len;
+    if (Math.abs(t - placing.from) < edge()) mode = 'left';
+    else if (Math.abs(t - end) < edge()) mode = 'right';
+    else if (t > placing.from && t < end) { mode = 'move'; grab = t - placing.from; }
+    else { mode = 'move'; grab = placing.len / 2; placing.from = t - grab; }
+    cv.style.cursor = mode === 'move' ? 'grabbing' : 'ew-resize';
     showPlacing();
   });
+
   cv.addEventListener('pointermove', (e) => {
-    if (grab === null || !placing) return;
-    const len = guideLength(CHANTS[at]);
-    placing.from = Math.max(-PRE, Math.min(placing.buf.duration - len / 4, at_(e) - grab));
+    if (!mode || !placing) return;
+    const t = secAt(e);
+    if (mode === 'move') {
+      placing.from = Math.max(-PRE, Math.min(placing.buf.duration - 0.5, t - grab));
+    } else if (mode === 'left') {
+      // Moving the start moves the words with it; the end stays put.
+      const end = placing.from + placing.len;
+      placing.from = Math.max(-PRE, Math.min(end - 0.5, t));
+      placing.len = end - placing.from;
+    } else {
+      placing.len = Math.max(0.5, Math.min(placing.buf.duration - placing.from, t - placing.from));
+    }
     showPlacing();
   });
-  const drop = () => { grab = null; cv.style.cursor = 'grab'; };
+
+  const drop = () => { mode = null; cv.style.cursor = 'grab'; };
   cv.addEventListener('pointerup', drop);
   cv.addEventListener('pointercancel', drop);
 })();
@@ -1677,7 +1739,7 @@ async function uploadGuide(e) {
     const from = buf.duration >= 45
       ? b.at - PRE
       : Math.min(Math.max(0, buf.duration - guideLength(b)) / 2, PRE);
-    placing = { file, buf, from, peaks: null };
+    placing = { file, buf, from, len: guideLength(b), peaks: null };
     showPlacing();
     $('guide-note').textContent = buf.duration >= 45
       ? 'Whole song. Line one block up, then place every block from it.'
@@ -1692,7 +1754,7 @@ async function uploadGuide(e) {
 $('guide-hear').addEventListener('click', () => {
   if (!placing || busy) return;
   const b = CHANTS[at];
-  playWindow(placing.buf, placing.from, guideLength(b));
+  playWindow(placing.buf, placing.from, placing.len);
   sweep(b, () => {});
 });
 
@@ -1710,7 +1772,7 @@ $('guide-save').addEventListener('click', async () => {
   $('guide-save').disabled = true;
   $('guide-note').textContent = 'Saving…';
   try {
-    await saveGuideFile(b.id, { [b.id]: { file: b.id, from: placing.from, len: guideLength(b) } });
+    await saveGuideFile(b.id, { [b.id]: { file: b.id, from: placing.from, len: placing.len } });
     $('guide-note').textContent = `Block ${at + 1} done. Press Guide to hear it as a fan will.`;
     placing = null;
     showPlacing();
@@ -1730,8 +1792,13 @@ $('guide-all').addEventListener('click', async () => {
   $('guide-note').textContent = 'Sending the song once, then placing every block…';
   try {
     const entries = {};
-    CHANTS.forEach((b) => {
-      entries[b.id] = { file: '_song', from: b.at - PRE + shift, len: guideLength(b) };
+    // The one block was trimmed to taste; the rest take their own full length.
+    CHANTS.forEach((x) => {
+      entries[x.id] = {
+        file: '_song',
+        from: x.at - PRE + shift,
+        len: x.id === CHANTS[at].id ? placing.len : guideLength(x),
+      };
     });
     await saveGuideFile('_song', entries);
     $('guide-note').textContent =
