@@ -1328,7 +1328,25 @@ async function getMic() {
  * and it never touches the audio session. The meter taps the end of the chain,
  * so the bar shows what is actually being recorded.
  */
-const INPUT_GAIN = 5;
+/*
+ * How much to lift the microphone, worked out from the microphone.
+ *
+ * Five was right for the phone it was written on and wrong everywhere else. A
+ * laptop's built-in microphone is levelled by the operating system before the
+ * page ever sees it, so lifting it five times over sits it against the ceiling
+ * and a shout comes back as static. The same five is barely enough for a phone
+ * with its processing turned off, which is why it was there.
+ *
+ * So it is measured instead. The room is listened to for a moment before the
+ * count-in, while nobody is shouting, and the lift is set so that a shout --
+ * which sits an order of magnitude above a quiet room -- lands near half of
+ * full scale. A quiet phone still gets its five; a hot laptop gets almost
+ * nothing. Set once, before recording, so there is no gain moving around
+ * underneath the take.
+ */
+const AIM = 0.5;          // where a shout should land
+const OVER_ROOM = 20;     // how far a shout sits above the room it is in
+const LIFT = [0.6, 6];    // never less than, never more than
 
 let analyser = null;
 let recStream = null;
@@ -1349,13 +1367,33 @@ function lift(raw) {
     const c = audio();
     const src = c.createMediaStreamSource(raw);
     const gain = c.createGain();
-    gain.gain.value = INPUT_GAIN;
+    gain.gain.value = LIFT[1];
     const squash = c.createDynamicsCompressor();
     squash.threshold.value = -20;
     squash.knee.value = 6;
     squash.ratio.value = 8;
     squash.attack.value = 0.003;
     squash.release.value = 0.15;
+
+    /*
+     * And a ceiling after it, which is the thing that was missing.
+     *
+     * A compressor leans on what is loud; it does not stop it. A shout close to
+     * the microphone still put peaks past full scale, and past full scale there
+     * is nothing to record but static. This catches them: hard, fast, and only
+     * ever in the last decibel or two, so nothing else about the take changes.
+     */
+    const ceiling = c.createDynamicsCompressor();
+    ceiling.threshold.value = -2;
+    ceiling.knee.value = 0;
+    ceiling.ratio.value = 20;
+    ceiling.attack.value = 0.001;
+    ceiling.release.value = 0.05;
+
+    // The room as the microphone hears it, before any of this touches it.
+    const raw = c.createAnalyser();
+    raw.fftSize = 512;
+    raw.smoothingTimeConstant = 0;
     /*
      * The same signal written to both channels, explicitly.
      *
@@ -1368,9 +1406,10 @@ function lift(raw) {
      */
     const dest = c.createMediaStreamDestination();
     const both = c.createChannelMerger(2);
-    src.connect(gain).connect(squash);
-    squash.connect(both, 0, 0);
-    squash.connect(both, 0, 1);
+    src.connect(raw);
+    src.connect(gain).connect(squash).connect(ceiling);
+    ceiling.connect(both, 0, 0);
+    ceiling.connect(both, 0, 1);
     both.connect(dest);
 
     /*
@@ -1387,9 +1426,9 @@ function lift(raw) {
     analyser.smoothingTimeConstant = 0.1;
     const mute = c.createGain();
     mute.gain.value = 0;
-    squash.connect(analyser).connect(mute).connect(c.destination);
+    ceiling.connect(analyser).connect(mute).connect(c.destination);
 
-    chain = { src, gain, squash, both, dest, analyser, mute };
+    chain = { src, gain, squash, ceiling, raw, both, dest, analyser, mute };
     return dest.stream;
   } catch (e) {
     // Any browser that will not build the chain records the plain input.
@@ -1428,14 +1467,44 @@ function releaseMic() {
   }
 }
 
-/** Loudest sample right now, 0 to 1. */
-function level() {
-  if (!analyser) return 0;
-  const buf = new Uint8Array(analyser.fftSize);
-  analyser.getByteTimeDomainData(buf);
+/** Loudest sample right now on a given tap, 0 to 1. */
+function peakOn(node) {
+  if (!node) return 0;
+  const buf = new Uint8Array(node.fftSize);
+  node.getByteTimeDomainData(buf);
   let peak = 0;
   for (let i = 0; i < buf.length; i++) peak = Math.max(peak, Math.abs(buf[i] - 128) / 128);
   return peak;
+}
+
+/** What is being recorded right now, for the meter. */
+function level() { return peakOn(analyser); }
+
+/**
+ * Listen to the room, and set the lift from what it hears.
+ *
+ * A quarter of a second before the count-in, while nobody is shouting yet. The
+ * middle reading is taken rather than the loudest, so a chair or a breath does
+ * not decide it. Everything about this is a guess at one number, but it is a
+ * guess made from this microphone in this room rather than from the phone the
+ * page happened to be written on.
+ */
+let roomLevel = 0.005;
+
+async function setLift() {
+  if (!chain || !chain.raw) return LIFT[1];
+  const reads = [];
+  for (let i = 0; i < 25; i += 1) {
+    reads.push(peakOn(chain.raw));
+    await new Promise((go) => setTimeout(go, 10));
+  }
+  reads.sort((a, b) => a - b);
+  const room = Math.max(0.0015, reads[Math.floor(reads.length / 2)]);
+  roomLevel = room;
+  const want = AIM / (room * OVER_ROOM);
+  const lift = Math.max(LIFT[0], Math.min(LIFT[1], want));
+  chain.gain.gain.value = lift;
+  return lift;
 }
 
 /** Whichever container this browser records: webm on Chrome, mp4 on Safari. */
@@ -2018,11 +2087,46 @@ function note(text) {
 }
 
 /** Count 3-2-1 on screen and in the ears, then hand back control. */
+/*
+ * How long this device takes to hand back a sound it has just made.
+ *
+ * The same round trip the take is corrected by, but heard live off the
+ * microphone rather than read out of the finished file. The file is the better
+ * ruler where it can be read at all, and on a phone it often cannot: iOS
+ * records an mp4 that Safari will not reliably decode, so the measurement came
+ * back empty and nothing was corrected. Which is exactly the shape of it being
+ * right on a laptop and late on a phone.
+ *
+ * Nothing here needs decoding. The first count-in click is asked for a quarter
+ * of a second in; how long after that it turns up at the microphone is the
+ * trip. It is not looked for before then, so the sound of a finger leaving the
+ * screen cannot be mistaken for it.
+ */
+let heardLag = -1;
+
+function timeClick() {
+  if (!chain || !chain.raw) return;
+  heardLag = -1;
+  const began = performance.now();
+  const floor = Math.max(0.03, roomLevel * 4);
+  (function look() {
+    const since = performance.now() - began;
+    if (heardLag >= 0 || since > 900) return;
+    if (since > 200 && peakOn(chain.raw) > floor) {
+      const trip = (since - 250) / 1000;
+      heardLag = trip > 0.01 && trip < 0.4 ? +trip.toFixed(3) : -1;
+      if (heardLag >= 0) return;
+    }
+    setTimeout(look, 8);
+  })();
+}
+
 function countIn(then) {
   const c = audio();
   const start = c.currentTime + 0.25;
   for (let i = 0; i < COUNT_IN; i++) click(start + i * BEAT, false);
   click(start + COUNT_IN * BEAT, true);
+  timeClick();
 
   let n = COUNT_IN;
   $('countdown').textContent = n;
@@ -2164,6 +2268,9 @@ async function record() {
     return;
   }
 
+  // The room decides how much lift this take gets, before the count-in starts.
+  await setLift();
+
   setStatus(t('getReady'), true);
   countIn(() => {
     let rec;
@@ -2208,7 +2315,10 @@ async function record() {
        * far worse than keeping a poor one, so anything unproven is kept, with
        * a word to go and listen.
        */
-      const { peak, lag } = await heardIn(blob);
+      const heard = await heardIn(blob);
+      const peak = heard.peak;
+      // The file where it can be read, the microphone where it cannot.
+      const lag = heard.lag > 0 ? heard.lag : heardLag;
       if (lag > 0) micLag = lag;
 
       if (peak >= 0 && peak < 0.005) {
