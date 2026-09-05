@@ -608,6 +608,7 @@ out.forEach((b, i) => { b.id = 'b' + (i + 1); });
 const BY_HAND = {
   rip: { b2: { pickup: 1 } },
   dumbhot: { b3: { before: 1 }, b10: { before: 1 }, b11: { before: 1 } },
+  beep: { b5: { before: 1 }, b13: { before: 1 } },
 };
 
 Object.entries(BY_HAND[name] || {}).forEach(([id, edit]) => {

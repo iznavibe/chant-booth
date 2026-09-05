@@ -205,7 +205,20 @@
    * The colour has to be named, because the letters themselves are painted by
    * a clipped gradient and are transparent, so the line would be too.
    */
-  .w.s { text-decoration: line-through; text-decoration-color: var(--unsung); }
+  /*
+   * And it does not sweep. The fill says "this is yours, here is where you are
+   * in it", and none of that is true of a word izna sing over the top of. It
+   * sits in the unsung colour throughout, struck, as a place to find yourself
+   * rather than a thing to follow. Painted flat rather than clipped, so the
+   * letters are opaque and the line through them can take their own colour.
+   */
+  .w.s {
+    background-image: none;
+    color: var(--unsung);
+    -webkit-text-fill-color: var(--unsung);
+    text-decoration: line-through;
+    text-decoration-color: var(--unsung);
+  }
 
   /* The one being sung right now. */
   .w.now { filter: drop-shadow(0 0 10px var(--pink-soft)); }
