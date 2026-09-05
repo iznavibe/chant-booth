@@ -569,6 +569,7 @@
         Choose a file
         <input id="guide-file" type="file" accept="audio/*,video/*" hidden>
       </label>
+      <p class="muted" id="rig" style="font-variant-numeric:tabular-nums"></p>
       <p class="muted" id="guide-note">
         A clip for this block, or the whole song to place every block from. Then
         drag the line onto the first word. Whatever runs up to it is played
@@ -1228,7 +1229,11 @@ async function guideBuffer(file) {
 let ac = null;
 /** The context can only start inside a gesture, so everything waits for one. */
 function audio() {
-  if (!ac) ac = new (window.AudioContext || window.webkitAudioContext)();
+  if (!ac) {
+    ac = new (window.AudioContext || window.webkitAudioContext)();
+    // Whatever it says about itself changes as it wakes, so the readout follows.
+    ac.onstatechange = () => { if (typeof showRig === 'function') showRig(); };
+  }
   if (ac.state === 'suspended') ac.resume();
   return ac;
 }
@@ -1267,6 +1272,9 @@ async function wake() {
   try {
     await Promise.race([c.resume(), new Promise((go) => setTimeout(go, 250))]);
   } catch (e) { /* refused until the next gesture */ }
+  // A sleeping context reports nothing about itself, so the readout is only
+  // worth anything once it is awake.
+  if (typeof showRig === 'function') showRig();
   return c;
 }
 
@@ -1474,6 +1482,57 @@ function releaseMic() {
     try { analyser.disconnect(); } catch (e) { /* already gone */ }
     analyser = null;
   }
+}
+
+/**
+ * Start the sound over when the route changes.
+ *
+ * Connecting earbuds, or the phone deciding to hand the sound to them, moves
+ * everything to a different output while the context is still holding the old
+ * one. It does not fail; it simply stops being heard, and opening the
+ * microphone on that route can hand back a stream with nothing in it. Neither
+ * announces itself. So the context is thrown away and built again on whatever
+ * is there now, which is the only reliable way back.
+ *
+ * Never in the middle of a take. Losing the recording to fix the routing would
+ * be a poor trade.
+ */
+function resetAudio() {
+  releaseMic();
+  stopPlaying();
+  const old = ac;
+  ac = null;
+  if (old) { try { old.close(); } catch (e) { /* already gone */ } }
+}
+
+if (navigator.mediaDevices && 'ondevicechange' in navigator.mediaDevices) {
+  navigator.mediaDevices.addEventListener('devicechange', () => {
+    if (!busy) resetAudio();
+  });
+}
+
+/**
+ * What this device says about itself, for the person placing guides.
+ *
+ * Every device-shaped problem so far has been argued about from a description.
+ * These are the numbers behind the guesses: what the speaker costs, what the
+ * round trip measured, and what is being taken off a take because of it.
+ */
+function showRig() {
+  const el = $('rig');
+  if (!el || !GUIDE) return;
+  const c = audio();
+  const say = (v) => (typeof v === 'number' ? Math.round(v * 1000) + 'ms' : '-');
+  let gap = null;
+  try {
+    const ts = c.getOutputTimestamp && c.getOutputTimestamp();
+    if (ts && ts.contextTime > 0) gap = c.currentTime - ts.contextTime;
+  } catch (e) { /* not everywhere */ }
+  el.textContent =
+    `speaker ${say(c.outputLatency)} · clocks ${say(gap)} · buffer ${say(c.baseLatency)}`
+    + ` · words wait ${say(outLag())}`
+    + ` · round trip ${micLag ? say(micLag) : 'not measured'}`
+    + ` · ${c.state} at ${Math.round(c.sampleRate)}Hz`;
 }
 
 /** Loudest sample right now on a given tap, 0 to 1. */
@@ -2422,6 +2481,7 @@ async function record() {
       takes.set(c.id, { blob, url: URL.createObjectURL(blob), mime: rec.mimeType || MIME, n, lag });
       keep(`${SONG}:${c.id}`, { blob, mime: rec.mimeType || MIME, n, sent: false });
       setStatus(t('gotIt'));
+      showRig();
       $('btn-record').textContent = t(GUIDE ? 'redoGuide' : 'redo');
       pips();
       buttons(true);
@@ -2945,7 +3005,7 @@ function goto(i) {
   $('meter-fill').style.width = '0%';
   buttons(true);
   showTimes();
-  if (GUIDE) showPlacing();
+  if (GUIDE) { showPlacing(); showRig(); }
 }
 
 /**
