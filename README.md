@@ -280,27 +280,23 @@ video does; the trim times are those plus the one second of lead-in and 1.5
 seconds of tail every guide carries, and they are the ones to cut to. Cut to the
 trim times and the window lands at 0 with no dragging.
 
-**Placing a guide** is a small timeline: a ruler, the waveform, and every word of
-the block laid out at the second it is sung, shouts in pink and izna's lines
-grey. Alignment becomes something you look at rather than count. Drag a shout
-onto the transient it belongs to and it is right; being a frame out is visible
-instead of something found later by listening.
+**Placing a guide is one mark: where the first word is sung.** Drag the line onto
+it. That is the whole interaction.
 
-The timeline starts one lead-in before the file, which is as far back as a block
-can start, and runs to whichever of the file or the window reaches further. That
-left edge is fixed on purpose: anchoring the view to the window meant dragging
-the window left dragged the view with it, so it sat in the same place on screen
-and looked stuck. The stretch with no audio behind it is greyed, and a dashed
-line marks where the file itself begins.
+Everything follows from that mark. The lead-in is always silent, whatever the
+file holds before it, so a clip with an intro in front of the fanchant needs no
+trimming: the intro simply never plays. What a fan hears is the count, a beat of
+quiet, then the chant beginning exactly where it was put.
 
-**"Start the words at the clip's start"** is the one-tap version of the usual
-case: a clip cut hard to the first word, where the lead-in has to sit before the
-file and play as silence.
+A window with two ends was the wrong idea. It asked where the *block* begins,
+which is a second before anything is heard, and that second may be silence, the
+tail of the line before, or nothing at all because the clip was cut to the first
+word. Answering it meant reasoning backwards from the sound to an invisible point
+in front of it. The mark sits on something audible instead.
 
-The window has a handle at each end. The left one sets where the block starts,
-which is what carries the words with it. The right one sets how much of the file
-plays, for cutting off whatever came after. Dragging the middle moves both. Play
-checks it against the sweep before saving.
+Around it sits a timeline: a ruler, the waveform, and every word of the block
+laid out from the mark at the second it is sung, shouts in pink and izna's lines
+grey. Line a shout up with its transient and it is right.
 
 - **A clip for one block.** Trim roughly in an editor, drop it in, drag, save.
   It need not be exact or even long enough.
