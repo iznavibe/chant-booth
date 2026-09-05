@@ -26,8 +26,17 @@ const HERE = path.join(__dirname, '..');
 const VIBESUB = process.env.VIBESUB_SRC
   || path.join(HERE, '..', 'vibesub-companion', 'src', 'utils', 'transliterate.ts');
 
-const JAPANESE = /[぀-ヿ㐀-䶿一-鿿]/;
-const HANGUL = /[가-힯]/;
+/*
+ * By script rather than by block, so the marks between the kana count.
+ *
+ * 々 is the repeat mark in 高々 and lives among the punctuation, outside every
+ * range of kana and kanji. Testing by range left it reading as not-Japanese, so
+ * a word that was only that mark kept itself where its own romaji, daka, was
+ * sitting right beside it: DUMB HOT read 하나 다카 々 니. Asking which script a
+ * character belongs to answers for the marks too.
+ */
+const JAPANESE = /[\p{Script_Extensions=Han}\p{Script_Extensions=Hiragana}\p{Script_Extensions=Katakana}]/u;
+const HANGUL = /\p{Script=Hangul}/u;
 
 /** A song is Japanese if its words are, and no Hangul says otherwise. */
 function scriptOf(chants) {

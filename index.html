@@ -1561,6 +1561,8 @@ function paintChant(b) {
   }
   $('block').innerHTML = rows.join('');
 
+  fitLines();
+
   // Every node that shows a given word, so both rows fill together.
   flatNodes = flatWords.map(() => []);
   $('block').querySelectorAll('.w').forEach((n) => {
@@ -1574,6 +1576,49 @@ function paintChant(b) {
 
   $('chant-badge').textContent = t('nOfM', { n: at + 1, m: CHANTS.length });
   $('legend').innerHTML = flatWords.some((w) => w.s) ? t('legendStruck') : t('legend');
+}
+
+/**
+ * Hold each line to one line, by shrinking the ones that would not fit.
+ *
+ * A line that wraps stops looking like a line. BEEP's BEEP BEEP BEEP BEEP BEEP
+ * BEEP! runs past the width of a phone and folds a word onto a second row,
+ * which reads as two lines of a song rather than one, and the sweep then
+ * appears to jump backwards to reach it. So a line that overruns is set in
+ * whatever size does fit, and only that line: the ones around it keep the size
+ * they were, since shrinking a whole block for its longest line makes the rest
+ * smaller for nothing.
+ *
+ * Each row is measured on its own, because a line and its reading are
+ * different lengths and only one of them may be the long one. The limit is a
+ * size rather than a fraction: the two rows start at different sizes, so the
+ * same fraction of each is not the same thing to read, and it was the fraction
+ * that stopped TIMEBOMB's seven-name roll call fitting when the size it wanted
+ * was perfectly legible. Below the limit a line is left to wrap, since
+ * shrinking it further trades one unreadable thing for another.
+ */
+const FLOOR = 8;
+
+function fitLines() {
+  $('block').querySelectorAll('.kr, .ro').forEach((p) => {
+    p.style.fontSize = '';
+    p.style.whiteSpace = '';
+    const room = p.clientWidth;
+    if (!room) return;
+    p.style.whiteSpace = 'nowrap';
+    const need = p.scrollWidth;
+    if (need <= room) { p.style.whiteSpace = ''; return; }
+    const base = parseFloat(getComputedStyle(p).fontSize);
+    const want = base * (room / need);
+    if (want < FLOOR) {
+      // Too long to fit and still be read: let it wrap at the smallest size.
+      p.style.whiteSpace = '';
+      p.style.fontSize = FLOOR + 'px';
+      return;
+    }
+    // A hair under what fits, so a rounded-up width does not fold the last word.
+    p.style.fontSize = (want * 0.99).toFixed(2) + 'px';
+  });
 }
 
 /** Back to unsung, for a block about to be run again. */
@@ -2190,6 +2235,8 @@ function showPlacing() {
 })();
 
 window.addEventListener('resize', drawWave);
+// A line that fitted in portrait need not fit in landscape.
+window.addEventListener('resize', () => { if (!screens.rec.hidden) fitLines(); });
 
 async function uploadGuide(e) {
   const file = e.target.files && e.target.files[0];
