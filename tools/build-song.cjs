@@ -268,21 +268,6 @@ for (const idx of blocks.values()) {
   all.forEach((l, n) => { if (l.mine.some(Boolean)) last = n; });
 
   /*
-   * A very short run gets the lines before it back, up to three in all.
-   *
-   * "Y O U" is three words over half a second. On its own there is nothing to
-   * follow into it and no way to tell it apart from the other short answers in
-   * the song, so the two lines it answers come back. Only ever within the same
-   * block, and only where the run is too brief to orient by.
-   */
-  /*
-   * A single line always gets the line before it, however long it runs.
-   *
-   * One line alone gives nothing to come in off: no phrase leading up to the
-   * entry, and nothing to tell one short answer apart from the others. Short
-   * runs take more, up to three, on the same reasoning.
-   */
-  /*
    * A chant that outlasts its own line drags the block along with it.
    *
    * The cue to cheer is one word held for four seconds while izna sing two more
@@ -335,6 +320,17 @@ for (const idx of blocks.values()) {
     && ((last - first + 1 < 2 && leadIn() < 1)
       || (last - first + 1 === 2 && span() < 4))) first -= 1;
 
+  out.push({ ...assemble(all, first, last), all, first, last });
+}
+
+/**
+ * Turn a run of lines into a block: the words, and the seconds they cover.
+ *
+ * Separate from choosing the run so that a block can be assembled twice. The
+ * hand edits below change which lines a block holds and need the words built
+ * again from the new run.
+ */
+function assemble(all, first, last) {
   const raw = all.slice(first, last + 1);
 
   // The window covers the kept run only, so a block that chants at its end does
@@ -487,11 +483,65 @@ for (const idx of blocks.values()) {
     };
   });
 
-  out.push({ at: +start.toFixed(2), dur: +(end - start).toFixed(2), lines });
+  return { at: +start.toFixed(2), dur: +(end - start).toFixed(2), lines };
 }
 
 out.sort((a, b) => a.at - b.at);
 out.forEach((b, i) => { b.id = 'b' + (i + 1); });
+
+/**
+ * Hand edits, block by block.
+ *
+ * The rules above get a block right nearly always. Where they do not, the fix
+ * is usually a judgement about this one screen rather than a rule waiting to be
+ * found, and chasing one of these with a new rule has twice moved blocks in
+ * nine other songs. So they are written down here instead, where the reach of
+ * each is exactly one block.
+ *
+ *   pickup  how many words off the end of the line before the block to keep in
+ *           front of its first line. RIP's "My evil side" is sung straight out
+ *           of the line above it with no breath between the two, and the chant
+ *           lands on its second word, so a fan reading only "My evil side" has
+ *           nothing to come in on. The rest of that line is not wanted, only
+ *           the word that runs into the entry.
+ */
+const BY_HAND = {
+  rip: { b2: { pickup: 1 } },
+};
+
+Object.entries(BY_HAND[name] || {}).forEach(([id, edit]) => {
+  const b = out.find((x) => x.id === id);
+  if (!b) { console.log('no ' + id + ' to edit'); return; }
+  if (edit.pickup) {
+    if (!b.first) { console.log(id + ': nothing in front to pick up from'); return; }
+    const grown = assemble(b.all, b.first - 1, b.last);
+    const head = grown.lines[0].w.slice(-edit.pickup);
+    if (!head.length) { console.log(id + ': no words to pick up'); return; }
+    grown.lines[1].w = head.concat(grown.lines[1].w);
+    grown.lines.shift();
+    // Built with the extra line in, so the seconds are measured again without
+    // the part of it that was dropped.
+    Object.assign(b, assembleAgain(grown));
+  }
+});
+
+/**
+ * Re-measure a block after its words have been edited.
+ *
+ * A block is normally as long as the run it was cut to, but an edit that drops
+ * the front of a line leaves it starting seconds before anything is shown. Only
+ * an edited block is measured this way: word timings are rounded to a
+ * hundredth, so reading the length back off them would cost every other block a
+ * hundredth of its own for nothing.
+ */
+function assembleAgain(b) {
+  const t0 = Math.min(...b.lines.flatMap((l) => l.w.map((w) => w.t)));
+  const t1 = Math.max(...b.lines.flatMap((l) => l.w.map((w) => w.t + w.d)));
+  b.lines.forEach((l) => l.w.forEach((w) => { w.t = +(w.t - t0).toFixed(2); }));
+  return { at: +(b.at + t0).toFixed(2), dur: +(t1 - t0).toFixed(2), lines: b.lines };
+}
+
+out.forEach((b) => { delete b.all; delete b.first; delete b.last; });
 
 const song = { title: title || name.toUpperCase(), artist: 'izna', chants: out };
 fs.writeFileSync(`songs/${name}.json`, JSON.stringify(song, null, 1));
