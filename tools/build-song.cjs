@@ -34,20 +34,35 @@ const p = JSON.parse(fs.readFileSync(src, 'utf8'));
  * The marking that counts is the fanchant colour, the one the fanchant button
  * paints on: 58 words in BEEP carry it against 31 that sit in brackets, and
  * whole chants like the 치우고 / 지우고 answers are coloured with no brackets
- * anywhere near them. Brackets are still honoured, so a chant typed straight
- * into the lyric line is not missed, and the run between an opening and closing
+ * anywhere near them. Brackets are honoured too, so a chant typed straight into
+ * the lyric line is not missed, and a run between an opening and closing
  * bracket counts even where it crosses a line.
+ *
+ * But brackets are also ordinary punctuation. SIGN writes its backing vocals
+ * as "Green light (oh oh oh oh)", where the crowd shouts the green light and
+ * izna sing the rest, and reading those brackets as a chant hands a fan four
+ * ohs that are not theirs. What separates the two cases is the colour: on a
+ * line where the fanchant button has been used at all, it has already said
+ * which words are the crowd's and brackets add nothing. Brackets speak only
+ * for a line the colour says nothing about. Every bracketed chant in the ten
+ * songs is on such a line, and every bracket on a painted line is punctuation.
+ *
+ * The state still carries across lines either way, since a bracket opened on
+ * an unpainted line can close on a painted one.
  */
-function chantFlags(sylls, fanchant) {
+function chantFlags(lines, fanchant) {
   const want = (fanchant.baseColor || '').toLowerCase();
+  const painted = (s) => !!s.baseColor && s.baseColor.toLowerCase() === want;
   const flags = [];
   let inside = false;
-  for (const s of sylls) {
-    if (s.text.includes('(')) inside = true;
-    const painted = !!s.baseColor && s.baseColor.toLowerCase() === want;
-    flags.push(inside || painted);
-    if (s.text.includes(')')) inside = false;
-  }
+  lines.forEach((sylls) => {
+    const spoken = sylls.some(painted);
+    sylls.forEach((s) => {
+      if (s.text.includes('(')) inside = true;
+      flags.push(painted(s) || (inside && !spoken));
+      if (s.text.includes(')')) inside = false;
+    });
+  });
   return flags;
 }
 
@@ -247,12 +262,10 @@ if (cheer && cheer.appearAt !== undefined) {
 }
 
 for (const idx of blocks.values()) {
-  const flat = idx.flatMap((i) => p.lines[i].syllables);
-
   // Brackets run across lines: the intro chant opens on the first line of its
   // block and closes on the third. Flags are worked out over the whole block
   // and handed back per line, or the middle of a chant reads as ordinary lyric.
-  const flags = chantFlags(flat, p.fanchant || {});
+  const flags = chantFlags(idx.map((i) => p.lines[i].syllables), p.fanchant || {});
   let seen = 0;
 
   const all = idx.map((i) => {
