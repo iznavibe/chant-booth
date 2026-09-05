@@ -4,8 +4,30 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>VibeChant</title>
-<meta name="description" content="Sing the izna fanchant, a block at a time.">
+<meta name="description" content="Record the izna fanchant one block at a time. Nayas' own voices become the guide videos we all practise with.">
 <meta name="theme-color" content="#fd538f">
+
+<!--
+  What a shared link looks like before anyone has opened it.
+
+  The page is meant to be passed around, so the card is the first thing most
+  people will see of it: what it is, whose voices it is made of, and a picture
+  rather than a bare address. The image is absolute because a card is read by a
+  machine that is not sitting on the page.
+-->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="VibeChant">
+<meta property="og:title" content="VibeChant · izna fanchant">
+<meta property="og:description" content="Record the izna fanchant one block at a time. Nayas' own voices become the guide videos we all practise with.">
+<meta property="og:url" content="https://iznavibe.github.io/chant-booth/">
+<meta property="og:image" content="https://iznavibe.github.io/chant-booth/card.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="VibeChant: record the fanchant, one block at a time.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="VibeChant · izna fanchant">
+<meta name="twitter:description" content="Record the izna fanchant one block at a time. Nayas' own voices become the guide videos we all practise with.">
+<meta name="twitter:image" content="https://iznavibe.github.io/chant-booth/card.jpg">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>🩷</text></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -337,6 +359,12 @@
     user-select: none;
   }
   .playRow input { accent-color: var(--pink); width: 15px; height: 15px; margin: 0; flex: none; }
+
+  /* Something still to send, said once and quietly. */
+  @keyframes urging { 0%, 100% { box-shadow: 0 0 0 0 var(--pink-wash); }
+                      50% { box-shadow: 0 0 0 7px transparent; } }
+  .urging { animation: urging 2.2s ease-in-out 3; }
+  @media (prefers-reduced-motion: reduce) { .urging { animation: none; } }
 
   /*
    * Play and pause, drawn rather than typed.
@@ -681,7 +709,19 @@ const CFG = window.BOOTH_CONFIG || {};
  * would throw away the run-up: the consent read, the name typed, the
  * microphone permission granted.
  */
-let SONG = new URLSearchParams(location.search).get('song');
+/*
+ * A song name arrives in the address bar, and goes on to be part of a path.
+ *
+ * It names the file to fetch, the folder a take is written to, and the key a
+ * take is kept under. Anything with a slash or a dot in it is therefore a way
+ * of writing somewhere it was not invited, so only the shape a real song name
+ * has is allowed through, and even that is checked against the list of songs
+ * before it is used. A link with anything else in it lands on the song picker,
+ * which is what a fan following a bad link should see anyway.
+ */
+const SONG_NAME = /^[a-z0-9]{1,24}$/;
+const asked = new URLSearchParams(location.search).get('song');
+let SONG = asked && SONG_NAME.test(asked) ? asked : null;
 
 /**
  * Guide mode.
@@ -759,6 +799,7 @@ const EN = {
   yourTakes: 'Your takes',
   tapAny: 'Tap any one to hear it back or record it again.',
   upload: 'Upload my takes',
+  waiting: '{n} not sent yet. They stay on this device until you send them.',
   sheetPlay: '▶ Listen',
   notRecorded: 'Not recorded',
   again: 'Record again',
@@ -845,6 +886,7 @@ const KO = {
   yourTakes: '내 녹음',
   tapAny: '눌러서 들어보거나 다시 녹음할 수 있어요.',
   upload: '녹음 보내기',
+  waiting: '{n}개가 아직 안 갔어요. 보내기 전까지는 이 기기에만 있어요.',
   sheetPlay: '▶ 들어보기',
   notRecorded: '아직 녹음 전',
   again: '다시 녹음',
@@ -928,6 +970,7 @@ const JA = {
   yourTakes: '録音一覧',
   tapAny: 'タップすると聞き直しも録り直しもできます。',
   upload: '録音を送る',
+  waiting: '{n} 件がまだ送信されていません。送るまではこの端末の中だけです。',
   sheetPlay: '▶ 聞く',
   notRecorded: '未録音',
   again: '録り直す',
@@ -3086,6 +3129,9 @@ function finish() {
   const n = takes.size;
   $('tally-n').textContent = n;
   $('tally-label').textContent = t('ofRecorded', { m: CHANTS.length });
+  const waiting = unsent();
+  $('upload-note').textContent = waiting ? t('waiting', { n: waiting }) : '';
+  $('btn-upload').classList.toggle('urging', waiting > 0);
   $('done-title').textContent = t('yourTakes');
   $('done-tabs').innerHTML = CHANTS
     .map((c, i) =>
@@ -3148,6 +3194,9 @@ async function uploadAll() {
     const take = takes.get(c.id);
     $('upload-note').textContent = t('sending', { n: sent + failed + 1, m: outstanding.length });
     try {
+      // A block runs seconds, not minutes. Anything this size is a mistake,
+      // and sending it would spend somebody else's room in the bucket.
+      if (take.blob.size > 12 * 1024 * 1024) throw new Error('take too large to send');
       await put('takes', `${SONG}/${c.id}/${sessionId}-${take.n}.webm`, take.blob, take.mime);
       uploaded.add(`${c.id}:${take.n}`);
       keep(`${SONG}:${c.id}`, {
@@ -3196,10 +3245,41 @@ async function uploadAll() {
   if (!failed) $('done-title').textContent = t('sentThanks');
 }
 
+/**
+ * How many takes are recorded but not sent.
+ *
+ * Everything is kept on the device, so closing the page loses nothing that a
+ * return visit will not find. But a fan who records a whole song and never
+ * presses send has done all of the work and none of it arrives, and nothing on
+ * screen was saying so.
+ */
+function unsent() {
+  return CHANTS.filter((c) => {
+    const take = takes.get(c.id);
+    return take && !uploaded.has(`${c.id}:${take.n}`);
+  }).length;
+}
+
+/*
+ * A word before the page closes on unsent takes.
+ *
+ * The browser decides what it says and whether to say it at all, so this is a
+ * nudge rather than a guarantee. It only fires where there is something to
+ * lose, never while placing guides, which is a different job with its own
+ * saving.
+ */
+window.addEventListener('beforeunload', (e) => {
+  if (GUIDE || !CHANTS.length || !unsent()) return;
+  e.preventDefault();
+  e.returnValue = '';
+});
+
 /* ---------------- wiring ---------------- */
 
 $('begin').addEventListener('click', () => {
-  handle = $('handle').value.trim().slice(0, 40);
+  // Whatever is typed here ends up in a file somebody else reads later, so
+  // line breaks and control characters do not come with it.
+  handle = $('handle').value.replace(/\p{C}/gu, ' ').trim().slice(0, 40);
   remember('handle', handle);
   audio(); // created inside the gesture, so later clicks are allowed to sound
   // A shared link already named a song; anyone else chooses one.
@@ -3298,6 +3378,26 @@ $('sheet-close').addEventListener('click', closeSheet);
 $('sheet').addEventListener('click', (e) => { if (e.target === $('sheet')) closeSheet(); });
 $('btn-upload').addEventListener('click', uploadAll);
 
+/**
+ * The songs there are, which is the only list a name may come from.
+ *
+ * Fetched once and kept, so checking a name costs nothing after the first.
+ * If the list cannot be read at all, nothing is treated as a song: better a
+ * picker that says so than a name nobody has vouched for being used as a path.
+ */
+let songNames = null;
+async function isASong(name) {
+  if (!songNames) {
+    try {
+      const { songs } = await (await fetch('songs/index.json', { cache: 'no-cache' })).json();
+      songNames = new Set(songs.map((x) => x.name));
+    } catch (e) {
+      return false;
+    }
+  }
+  return songNames.has(name);
+}
+
 /** The list of songs, drawn once and shown whenever nothing is chosen. */
 async function showPicker() {
   stopPlaying();
@@ -3329,6 +3429,7 @@ async function showPicker() {
  * this phone uses for that song.
  */
 async function loadSong(name) {
+  if (!SONG_NAME.test(name) || !(await isASong(name))) { showPicker(); return; }
   stopPlaying();
   try {
     const res = await fetch(`songs/${name}.json`, { cache: 'no-cache' });
