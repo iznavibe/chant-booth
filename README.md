@@ -240,6 +240,23 @@ block is still reachable by arrow, by tapping its dot, or from that grid.
 ?song=beep#guide
 ```
 
+**`#guide` is not a lock.** It is a fragment in the URL of a public repository,
+so anyone can read the page source and find it. The lock is the bucket policy:
+anon may write takes and read guides, and nothing else. Run this once, after the
+first set of guides is in:
+
+```sql
+alter policy "vibechant write"   on storage.objects with check (bucket_id = 'takes');
+alter policy "vibechant replace" on storage.objects using (bucket_id = 'takes')
+                                                   with check (bucket_id = 'takes');
+```
+
+After that, writing a guide needs a key that outranks anon. Guide mode has a
+field for the **service_role** key: it is held in a variable for as long as the
+tab is open and stored nowhere, not localStorage, not this repository. Paste it
+when adding guides, close the tab when done. Do not do this on a shared machine,
+and never put that key in `config.js`.
+
 **Easiest: cut them from one file.** Drop the whole song in, video or audio, and
 every block is sliced from it at the timings the video already uses. No trimming,
 no naming, no exporting 21 clips. "Hear this block" checks the alignment and the

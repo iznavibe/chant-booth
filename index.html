@@ -420,7 +420,19 @@
 
   <section id="screen-rec" hidden>
     <div class="card" id="slicer" hidden style="margin-bottom:14px;display:flex;flex-direction:column;gap:12px">
-      <h2>Cut the guides from one file</h2>
+      <h2>Guides</h2>
+      <p class="muted">
+        Guides are locked to anyone without the key. Paste the Supabase
+        <b>service_role</b> key to write them. It is held for this tab only and
+        stored nowhere.
+      </p>
+      <input id="master" type="password" placeholder="service_role key"
+             autocomplete="off" spellcheck="false"
+             style="width:100%;font:inherit;color:var(--ink);padding:12px 16px;
+                    border-radius:14px;border:1px solid var(--edge);background:var(--sunk)">
+      <p class="muted" id="master-note"></p>
+
+      <h2 style="margin-top:6px">Cut them from one file</h2>
       <p class="muted">
         Drop in the whole song, video or audio, and every block is cut from it at
         the timings the video already uses. No trimming, no naming.
@@ -459,17 +471,6 @@
       <p class="countdown" id="countdown"></p>
     </div>
 
-    <div style="display:flex;flex-direction:column;gap:10px;margin-top:14px">
-      <div class="row">
-        <button class="ghost" id="btn-listen">Guide</button>
-        <button class="primary" id="btn-record">Record</button>
-      </div>
-      <div class="nav">
-        <button class="ghost icon" id="btn-prev" aria-label="Previous block">‹</button>
-        <button class="ghost grow" id="btn-play" aria-label="Play my take">▶</button>
-        <button class="ghost icon" id="btn-next" aria-label="Next block">›</button>
-      </div>
-      <button class="ghost full" id="btn-done">My takes</button>
       <div class="row" id="guide-upload" hidden>
         <label class="ghost" for="guide-file"
                style="text-align:center;border-radius:999px;padding:12px 22px;
@@ -496,6 +497,18 @@
           <button class="primary" id="clip-save">Save as the guide</button>
         </div>
       </div>
+
+    <div style="display:flex;flex-direction:column;gap:10px;margin-top:14px">
+      <div class="row">
+        <button class="ghost" id="btn-listen">Guide</button>
+        <button class="primary" id="btn-record">Record</button>
+      </div>
+      <div class="nav">
+        <button class="ghost icon" id="btn-prev" aria-label="Previous block">‹</button>
+        <button class="ghost grow" id="btn-play" aria-label="Play my take">▶</button>
+        <button class="ghost icon" id="btn-next" aria-label="Next block">›</button>
+      </div>
+      <button class="ghost full" id="btn-done">My takes</button>
     </div>
 
     <p class="note" id="save-note" hidden></p>
@@ -722,10 +735,26 @@ const CAN_UPLOAD = !!(CFG.url && CFG.key);
  * forbids: a brand new take would be refused by the very policy protecting it.
  * Guides may replace, because guides are readable.
  */
+/**
+ * A key that can write guides, typed in and never kept.
+ *
+ * Guide mode is a fragment in the URL of a public repository, so it is not a
+ * lock and was never going to be one. The lock is the bucket policy: anon may
+ * write takes and read guides, and nothing more. Writing a guide needs a key
+ * that outranks that, which lives in this variable for as long as the tab is
+ * open and goes nowhere else. Not localStorage, not the repository, not a
+ * request to anywhere but Supabase.
+ */
+let masterKey = '';
+
+/** Whether a refusal was the lock rather than a fault. */
+const locked = (msg) => /row-level security|Unauthorized|403/i.test(msg || '');
+
 async function put(bucket, path, blob, type, replace) {
+  const key = bucket === 'guides' && masterKey ? masterKey : CFG.key;
   const headers = {
-    apikey: CFG.key,
-    Authorization: 'Bearer ' + CFG.key,
+    apikey: key,
+    Authorization: 'Bearer ' + key,
     'Content-Type': type || 'application/octet-stream',
   };
   if (replace) headers['x-upsert'] = 'true';
@@ -1422,7 +1451,9 @@ async function saveGuide(c, blob, mime) {
     guides.set(c.id, URL.createObjectURL(blob));
     note('Guide saved. Everyone will hear this when they press Guide.');
   } catch (e) {
-    note('The guide did not upload: ' + e.message);
+    note(locked(e.message)
+      ? 'Guides are locked. Paste the service_role key at the top to write them.'
+      : 'The guide did not upload: ' + e.message);
   }
 }
 
@@ -1515,7 +1546,9 @@ $('clip-save').addEventListener('click', async () => {
     setStatus('Guide saved. Press Guide to hear it as a fan will.');
     note(`Block ${at + 1} done, ${Math.round(wav.size / 1024)}KB.`);
   } catch (err) {
-    note('The guide did not upload: ' + err.message);
+    note(locked(err.message)
+      ? 'Guides are locked. Paste the service_role key at the top to write them.'
+      : 'The guide did not upload: ' + err.message);
   }
   $('clip-save').disabled = false;
 });
@@ -1586,6 +1619,13 @@ function songStart(b) {
   return b.at - PRE + (parseFloat($('slice-offset').value) || 0);
 }
 
+$('master').addEventListener('input', (e) => {
+  masterKey = e.target.value.trim();
+  $('master-note').textContent = masterKey
+    ? 'Key held for this tab. Close it and the key is gone.'
+    : '';
+});
+
 $('slice-file').addEventListener('change', async (e) => {
   const file = e.target.files && e.target.files[0];
   e.target.value = '';
@@ -1642,7 +1682,9 @@ $('slice-go').addEventListener('click', async () => {
   }
   $('slice-go').disabled = false;
   $('slice-note').textContent = why
-    ? `${done} of ${CHANTS.length} sent. (${why})`
+    ? (locked(why)
+        ? 'Guides are locked. Paste the service_role key above to write them.'
+        : `${done} of ${CHANTS.length} sent. (${why})`)
     : `All ${done} guides sent. Press Guide on any block to hear it.`;
 });
 
@@ -1889,7 +1931,11 @@ async function loadSong(name) {
   document.title = `${song.title} · VibeChant`;
   $('eyebrow').textContent = `izna · ${song.title}` + (GUIDE ? ' · guide mode' : '');
   $('title').textContent = GUIDE ? 'Guides' : 'VibeChant';
-  if (GUIDE) $('slicer').hidden = false;
+  if (GUIDE) {
+    $('slicer').hidden = false;
+    // Nothing here is a take, so the way to the take list is noise.
+    $('btn-done').hidden = true;
+  }
 
   show('rec');
   const next = CHANTS.findIndex((c) => !takes.has(c.id));
