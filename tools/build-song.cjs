@@ -406,13 +406,47 @@ function assemble(all, first, last) {
     const rowOf = (u) => u.row || 0;
     const overlap = (x, y) => Math.min(x.end, y.end) - Math.max(x.start, y.start);
 
+    /*
+     * Which row each romaji is on, including the ones that do not say.
+     *
+     * A chant sung over a line is a second row, and both rows carry the marker
+     * for it, except that four units across the ten projects were saved without
+     * one. Those read as row 0 and were paired against the words the chant is
+     * sung over: Mamma Mia's 이즈날 봐 landed inside 우리를 봐, which came out as
+     * "urireul iznal bwa bwa", and TIMEBOMB lost 최정은's romaji altogether.
+     *
+     * A romaji covers the same seconds as the lyric it spells, so a missing
+     * marker is recovered from the seconds. Whole rows are weighed rather than
+     * single units, because the row a chant sits on is one long unit against a
+     * row cut one syllable at a time and any one of those syllables loses.
+     *
+     * Seconds alone are not enough where the two rows cover the very same span,
+     * which is exactly what a chant sung over a line does. Then the strike
+     * decides: a word the chant talks over is struck through in both rows, so a
+     * struck romaji belongs to the struck lyric and a plain one to the chant.
+     */
+    const roRow = roRaw.map((r) => {
+      if (r.row !== undefined) return r.row;
+      const score = new Map();
+      src.forEach((u) => {
+        const over = overlap(u, r);
+        if (over <= 0) return;
+        const alike = !u.strike === !r.strike ? 2 : 1;
+        score.set(rowOf(u), (score.get(rowOf(u)) || 0) + over * alike);
+      });
+      let row = 0;
+      let most = 0;
+      score.forEach((v, k) => { if (v > most) { most = v; row = k; } });
+      return row;
+    });
+
     // Which romaji each word sits under, whether or not it is the only one.
     const owner = src.map((u) => {
       if (even) return -1;
       let best = -1;
       let most = 0;
       roRaw.forEach((r, k) => {
-        if (rowOf(r) !== rowOf(u)) return;
+        if (roRow[k] !== rowOf(u)) return;
         const over = overlap(u, r);
         if (over > most) { most = over; best = k; }
       });
@@ -464,11 +498,11 @@ function assemble(all, first, last) {
 
     // And every romaji goes to the group it belongs to.
     const parts = groups.map(() => []);
-    roRaw.forEach((r) => {
+    roRaw.forEach((r, k) => {
       let best = -1;
       let most = 0;
       groups.forEach((g, n) => {
-        if (rowOf(src[g.at]) !== rowOf(r)) return;
+        if (rowOf(src[g.at]) !== roRow[k]) return;
         const span = { start: g.units[0].start, end: g.units[g.units.length - 1].end };
         const over = overlap(span, r);
         if (over > most) { most = over; best = n; }
