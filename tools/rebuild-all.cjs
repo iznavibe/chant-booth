@@ -36,5 +36,8 @@ want.forEach((song, key) => {
     { cwd: HERE, stdio: 'inherit' });
 });
 
-if (missing) process.exitCode = 1;
-else execFileSync(process.execPath, [path.join(__dirname, 'build-index.cjs')], { cwd: HERE, stdio: 'inherit' });
+if (missing) { process.exitCode = 1; return; }
+
+execFileSync(process.execPath, [path.join(__dirname, 'build-index.cjs')], { cwd: HERE, stdio: 'inherit' });
+// The readings need every song built first, and the index to know their names.
+execFileSync(process.execPath, [path.join(__dirname, 'add-readings.cjs')], { cwd: HERE, stdio: 'inherit' });
