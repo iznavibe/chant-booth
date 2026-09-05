@@ -793,6 +793,7 @@ const EN = {
     + 'doing again.',
   silentNote: 'Nothing reached the recording. Check nothing else is holding the mic, '
     + 'and try once more.',
+  overBluetooth: 'Wireless earphones record at call quality, whatever else they are good at. The take will sound much better through the mic on the device itself.',
   quietNote: 'That one came out quiet. Have a listen, and try closer to the mic if '
     + 'it is hard to hear.',
 
@@ -877,6 +878,7 @@ const KO = {
     + '소리는 조금 작아지지만 괜찮으니, 이번 구간만 다시 녹음해 주세요.',
   silentNote: '녹음에 소리가 들어오지 않았어요. 다른 앱이 마이크를 쓰고 있지 않은지 '
     + '확인하고 한 번 더 해주세요.',
+  overBluetooth: '무선 이어폰은 녹음할 때 통화 음질로 떨어져요. 기기 자체의 마이크로 하면 훨씬 좋게 녹음돼요.',
   quietNote: '조금 작게 녹음됐어요. 들어보시고 잘 안 들리면 마이크를 더 가까이 대고 '
     + '다시 해주세요.',
 
@@ -959,6 +961,7 @@ const JA = {
     + '音は少し小さくなりますが問題ありません。このブロックだけ録り直してください。',
   silentNote: '録音に音が届いていません。他のアプリがマイクを使っていないか確かめて、'
     + 'もう一度お試しください。',
+  overBluetooth: 'ワイヤレスイヤホンは録音のとき通話音質になります。端末のマイクで録るとずっときれいです。',
   quietNote: '少し小さく録れました。聞いてみて、聞き取りにくければ'
     + 'マイクをもう少し近づけて録り直してください。',
 
@@ -1323,6 +1326,33 @@ async function getMic() {
 }
 
 /**
+ * Whether this microphone is arriving at call quality.
+ *
+ * Wireless earphones have no high-quality way back. The moment a page opens
+ * their microphone, the phone drops the whole connection to the profile it
+ * uses for calls: one channel, a fraction of the sampling rate, and a band
+ * that stops around 4kHz. There is nothing here that can undo that, because it
+ * happens below the browser, and it is why a take through earphones comes back
+ * sounding like a phone call however the recording is handled afterwards.
+ *
+ * So it is said rather than fixed. Anyone can carry on; the phone's own
+ * microphone is simply better, and worth knowing before three minutes of
+ * shouting rather than after.
+ */
+function callQuality() {
+  try {
+    const track = mic && mic.getAudioTracks()[0];
+    if (!track) return false;
+    const said = track.getSettings ? track.getSettings() : {};
+    if (said.sampleRate && said.sampleRate <= 16000) return true;
+    if (audio().sampleRate <= 16000) return true;
+    return /bluetooth|airpod|wireless|hands.?free|headset/i.test(track.label || '');
+  } catch (e) {
+    return false;
+  }
+}
+
+/**
  * Lift the microphone, and record what comes out of that rather than the bare
  * input.
  *
@@ -1532,7 +1562,8 @@ function showRig() {
     `speaker ${say(c.outputLatency)} · clocks ${say(gap)} · buffer ${say(c.baseLatency)}`
     + ` · words wait ${say(outLag())}`
     + ` · round trip ${micLag ? say(micLag) : 'not measured'}`
-    + ` · ${c.state} at ${Math.round(c.sampleRate)}Hz`;
+    + ` · ${c.state} at ${Math.round(c.sampleRate)}Hz`
+    + (callQuality() ? ' · call quality' : '');
 }
 
 /** Loudest sample right now on a given tap, 0 to 1. */
@@ -1791,6 +1822,7 @@ const FLAT_STRIKE = new Set(['metronome', 'izna']);
  * how far to pull that singer forward.
  */
 let micLag = 0;
+let warnedAboutMic = false;
 
 /*
  * A hand on top of the measurement, for when it is close but not right.
@@ -2406,6 +2438,12 @@ async function record() {
     busy = false;
     buttons(true);
     return;
+  }
+
+  // Said once a session, and before the shouting rather than after it.
+  if (!warnedAboutMic && callQuality()) {
+    warnedAboutMic = true;
+    note(t('overBluetooth'));
   }
 
   // The room decides how much lift this take gets, before the count-in starts.
