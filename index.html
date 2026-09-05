@@ -210,6 +210,21 @@
   /* The one being sung right now. */
   .w.now { filter: drop-shadow(0 0 10px var(--pink-soft)); }
 
+  /* Exact in and out points, for trimming somewhere else. */
+  .times {
+    background: var(--sunk);
+    border: 1px solid var(--edge);
+    border-radius: 12px;
+    padding: 12px 14px;
+    font-size: .85rem;
+    line-height: 1.7;
+    font-variant-numeric: tabular-nums;
+    user-select: text;
+    -webkit-user-select: text;
+  }
+  .times b { color: var(--pink); font-family: var(--display); }
+  .times i { color: var(--muted); font-style: normal; }
+
   .songs { display: flex; flex-direction: column; gap: 8px; }
   .song {
     display: flex;
@@ -422,6 +437,7 @@
     <div class="card" id="guidebox" hidden
          style="margin-bottom:14px;display:flex;flex-direction:column;gap:10px">
       <h2>Guides</h2>
+      <div id="times" class="times"></div>
       <input id="master" type="password" placeholder="service_role key"
              autocomplete="off" spellcheck="false"
              style="width:100%;font:inherit;color:var(--ink);padding:12px 16px;
@@ -1140,6 +1156,36 @@ function fmt(sec) {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
+/** m:ss.cc, close enough to scrub to in an editor. */
+function stamp(sec) {
+  const t = Math.max(0, sec);
+  const m = Math.floor(t / 60);
+  const rest = (t - m * 60).toFixed(2).padStart(5, '0');
+  return `${m}:${rest}`;
+}
+
+/**
+ * Where this block sits in the song, exactly.
+ *
+ * Two pairs, because they answer different questions. The lyric times are what
+ * the video does; the trim times are those plus the second of lead-in and the
+ * second and a half of tail that every guide carries, and they are the ones to
+ * cut to. Given both, nobody has to do the arithmetic and get it wrong.
+ */
+function showTimes() {
+  if (!GUIDE || !CHANTS.length) return;
+  const b = CHANTS[at];
+  const shouts = b.lines.flatMap((l) => l.w).filter((w) => w.c);
+  $('times').innerHTML =
+    `<div><b>Block ${at + 1}</b> <i>of ${CHANTS.length}</i></div>` +
+    `<div><i>lyrics</i> ${stamp(b.at)} to ${stamp(b.at + b.dur)} ` +
+    `<i>(${b.dur.toFixed(2)}s)</i></div>` +
+    `<div><i>trim to</i> <b>${stamp(b.at - PRE)}</b> to <b>${stamp(b.at + b.dur + TAIL)}</b> ` +
+    `<i>(${guideLength(b).toFixed(2)}s)</i></div>` +
+    `<div><i>first shout ${stamp(b.at + (shouts[0] ? shouts[0].t : 0))}, ` +
+    `${shouts.length} in this block</i></div>`;
+}
+
 /**
  * Run one clip: the silent lead-in, then each word lighting at its own moment,
  * then the tail. Drives the meter across the whole thing, so what is on screen
@@ -1732,6 +1778,7 @@ function goto(i) {
   $('countdown').textContent = '';
   $('meter-fill').style.width = '0%';
   buttons(true);
+  showTimes();
 }
 
 /**

@@ -265,6 +265,21 @@ already exactly right, and it sounded like it.
 `guides/<song>/manifest.json` holds `{blockId: {file, from, len}}`. Files sit
 beside it with no extension, since what arrives may be mp3, m4a, webm or mp4.
 
+**Guide mode shows each block's exact in and out points**, so a clip can be cut
+to them somewhere else:
+
+```
+Block 7 of 21
+lyrics   0:47.38 to 0:53.96   (6.58s)
+trim to  0:46.38 to 0:55.46   (9.08s)
+first shout 0:49.71, 2 in this block
+```
+
+Two pairs because they answer different questions. The lyric times are what the
+video does; the trim times are those plus the one second of lead-in and 1.5
+seconds of tail every guide carries, and they are the ones to cut to. Cut to the
+trim times and the window lands at 0 with no dragging.
+
 **Placing a guide** is a waveform with a draggable window. The purple ticks
 inside it mark each shout, so lining a tick up with a visible transient is the
 whole job. Play checks it against the sweep before saving.
