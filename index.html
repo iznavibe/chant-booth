@@ -1508,6 +1508,38 @@ function reading(w) {
   return w.r;
 }
 
+/**
+ * How far the colour has run across one word, as a percentage of it.
+ *
+ * A word is often several steps of the video welded into one thing to read:
+ * 감아, 봤지 and 만 are one word but three steps, and 만 alone is held a second
+ * and a half. Sweeping the welded word evenly would run the colour past the
+ * syllable izna is still singing, which is the thing a fan is watching. So
+ * each step takes its own share of the width for its own length of time, and
+ * the share is by how much of the word it is: the steps of a word are the same
+ * script as each other, so their letters are the same width as each other.
+ *
+ * A word of one step is the plain case and sweeps straight across.
+ */
+function fillOf(w, beats, el) {
+  const from = PRE + w.t;
+  if (el <= from) return 0;
+  if (el >= from + w.d) return 100;
+  if (!beats || beats.length < 2) return ((el - from) / w.d) * 100;
+  const whole = beats.reduce((n, x) => n + x[0].length, 0);
+  if (!whole) return ((el - from) / w.d) * 100;
+  let done = 0;
+  for (const [text, bt, bd] of beats) {
+    const opens = PRE + bt;
+    // Before this step: the colour waits where the last one left it, which is
+    // what the video does in the gap between two syllables.
+    if (el < opens) break;
+    if (el < opens + bd) return ((done + (text.length * (el - opens)) / bd) / whole) * 100;
+    done += text.length;
+  }
+  return (done / whole) * 100;
+}
+
 function paintChant(b) {
   flatWords = [];
   const rows = [];
@@ -1518,9 +1550,9 @@ function paintChant(b) {
       const i = flatWords.length;
       flatWords.push(w);
       const cls = 'w' + (w.c ? ' c' : '') + (w.s ? ' s' : '');
-      kr.push(`<span class="${cls}" data-i="${i}">${esc(w.k)}</span>`);
+      kr.push(`<span class="${cls}" data-i="${i}" data-row="k">${esc(w.k)}</span>`);
       const say = reading(w);
-      if (say) ro.push(`<span class="${cls}" data-i="${i}">${esc(say)}</span>`);
+      if (say) ro.push(`<span class="${cls}" data-i="${i}" data-row="r">${esc(say)}</span>`);
     }
     rows.push(
       `<div class="ln"><p class="kr">${kr.join(' ')}</p>` +
@@ -1531,7 +1563,13 @@ function paintChant(b) {
 
   // Every node that shows a given word, so both rows fill together.
   flatNodes = flatWords.map(() => []);
-  $('block').querySelectorAll('.w').forEach((n) => flatNodes[+n.dataset.i].push(n));
+  $('block').querySelectorAll('.w').forEach((n) => {
+    const w = flatWords[+n.dataset.i];
+    // The two rows are cut into their own steps and are not always the same
+    // ones, so each node carries the steps of the row it is in.
+    n.beats = n.dataset.row === 'k' ? w.p : (w.rp || w.p);
+    flatNodes[+n.dataset.i].push(n);
+  });
   clearFill();
 
   $('chant-badge').textContent = t('nOfM', { n: at + 1, m: CHANTS.length });
@@ -1541,6 +1579,7 @@ function paintChant(b) {
 /** Back to unsung, for a block about to be run again. */
 function clearFill() {
   flatNodes.forEach((ns) => ns.forEach((n) => {
+    n.fill = undefined;
     n.style.setProperty('--p', '0%');
     n.classList.remove('now');
   }));
@@ -1601,7 +1640,6 @@ function sweep(c, onDone, opts) {
   let entered = false;
   let loudest = 0;
   // Last drawn fill per word, so a frame only touches what moved.
-  const fill = flatWords.map(() => -1);
 
   $('lead').classList.add('on');
   if (live) $('level').hidden = false;
@@ -1623,13 +1661,13 @@ function sweep(c, onDone, opts) {
 
     flatWords.forEach((w, i) => {
       const from = PRE + w.t;
-      const pct = el <= from ? 0 : el >= from + w.d ? 100 : ((el - from) / w.d) * 100;
-      if (Math.abs(pct - fill[i]) < 0.6 && pct !== 0 && pct !== 100) return;
-      fill[i] = pct;
-      const css = pct.toFixed(1) + '%';
-      const now = w.c && pct > 0 && pct < 100;
+      const across = el <= from ? 0 : el >= from + w.d ? 100 : ((el - from) / w.d) * 100;
+      const now = w.c && across > 0 && across < 100;
       flatNodes[i].forEach((n) => {
-        n.style.setProperty('--p', css);
+        const pct = fillOf(w, n.beats, el);
+        if (n.fill !== undefined && Math.abs(pct - n.fill) < 0.6 && pct !== 0 && pct !== 100) return;
+        n.fill = pct;
+        n.style.setProperty('--p', pct.toFixed(1) + '%');
         n.classList.toggle('now', now);
       });
     });

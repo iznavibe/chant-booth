@@ -119,6 +119,29 @@ function syllablesIn(text) {
   return m ? m.length : 1;
 }
 
+/** The steps of a sweep, as text and the seconds it is held. */
+function beats(units, start) {
+  if (!units || units.length < 2) return undefined;
+  return units.map((u) => [
+    u.text,
+    +(u.start - start).toFixed(2),
+    +(u.end - u.start).toFixed(2),
+  ]);
+}
+
+/**
+ * Every word's steps, for a run being welded into one.
+ *
+ * A word that was already one step carries none, there having been nothing to
+ * lose, so it stands in for itself here. Leaving it out would end the welded
+ * word's steps before the word itself ends.
+ */
+function beatsOf(run, key) {
+  const text = key === 'p' ? 'k' : 'r';
+  const all = run.flatMap((w) => w[key] || [[w[text], w.t, w.d]]);
+  return all.length > 1 ? all : undefined;
+}
+
 function joinNames(words) {
   const out = [];
   for (let i = 0; i < words.length; i += 1) {
@@ -134,6 +157,8 @@ function joinNames(words) {
         k: run.map((w) => w.k).join(''),
         r: run.map((w) => w.r).join(''),
         d: +(run[run.length - 1].t + run[run.length - 1].d - run[0].t).toFixed(2),
+        p: beatsOf(run, 'p'),
+        rp: beatsOf(run, 'rp'),
         c: run.some((w) => w.c) ? 1 : 0,
         s: run.some((w) => w.s) ? 1 : 0,
       });
@@ -551,7 +576,7 @@ function assemble(all, first, last) {
         const over = overlap(span, r);
         if (over > most) { most = over; best = n; }
       });
-      if (best >= 0) parts[best].push(r.text);
+      if (best >= 0) parts[best].push(r);
       // Only where this pairing is the one that counts. Rows cut the same are
       // paired by position instead, and what happens here is never read.
       else if (!even && r.text.trim()) unpaired.push(`${mmss(r.start)} romaji "${r.text.trim()}" belongs to no word`);
@@ -565,9 +590,23 @@ function assemble(all, first, last) {
           k: strip(g.units.map((u) => u.text).join('')).trim(),
           r: strip(even
             ? g.units.map((u, m) => (roRaw[g.at + m] && roRaw[g.at + m].text) || '').join('')
-            : parts[n].join('')).trim(),
+            : parts[n].map((r) => r.text).join('')).trim(),
           t: +(first.start - start).toFixed(2),
           d: +(last.end - first.start).toFixed(2),
+          /*
+           * The steps the sweep takes across this word.
+           *
+           * A word is often several units of the video welded together: 감아,
+           * 봤지 and 만 read as one word but are three steps, and 만 alone is
+           * held a second and a half. Filling the welded word evenly loses
+           * that, and the fan sees the colour run past the syllable izna is
+           * still on. So the steps are kept, and a word of one step keeps
+           * none, since there is nothing there to lose.
+           */
+          p: beats(g.units, start),
+          rp: beats(even
+            ? g.units.map((u, m) => roRaw[g.at + m]).filter(Boolean)
+            : parts[n], start),
           c: g.units.some((u, m) => mine[g.at + m]) ? 1 : 0,
           // Struck through in the video: izna's word that the chant talks over.
           // Not the fan's to sing, but they need to see where they land on it.

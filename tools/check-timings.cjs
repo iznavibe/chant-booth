@@ -30,6 +30,7 @@ fs.readdirSync(DIR).filter((f) => f.endsWith('.vibelyric')).forEach((f) => {
 
 let bad = 0;
 let words = 0;
+let steps = 0;
 want.forEach((song, key) => {
   const p = project.get(key);
   if (!p) { console.log(song.title + ': no project'); bad += 1; return; }
@@ -78,6 +79,43 @@ want.forEach((song, key) => {
         const prev = l.w[j - 1];
         const apart = prev && w.t >= prev.t + prev.d - 0.05;
         if (prev && apart && w.t + 0.001 < prev.t) say(`${b.id} line${i}: "${w.k}" comes before "${prev.k}"`);
+
+        /*
+         * The steps a welded word is swept in have to be the word.
+         *
+         * They are what makes 만 hold while 감아봤지 goes by, so each one has to
+         * begin and end on a moment the project marks, they have to run
+         * forwards, and together they have to cover the word and nothing more.
+         * A step out of place would put the colour somewhere izna is not.
+         */
+        [['p', 'lyric'], ['rp', 'romaji']].forEach(([key, row]) => {
+          const beats = w[key];
+          if (!beats) return;
+          steps += beats.length;
+          if (beats.length < 2) say(`${b.id} "${w.k}": a single ${row} step is no step`);
+          /*
+           * Inside the word, rather than exactly the word.
+           *
+           * A word takes its own start and length from the lyric, and the
+           * romaji row is timed by hand separately: TIMEBOMB has 애써 외면
+           * beginning at 42.306s and its aesseo at 42.392s, which is the
+           * project's own reading of the line and not a fault. Steps that
+           * begin late simply hold the colour where it was, so what matters
+           * is that none of them fall outside the word.
+           */
+          const last = beats[beats.length - 1];
+          if (beats[0][1] < w.t - 0.011) say(`${b.id} "${w.k}": ${row} steps start ${beats[0][1]}s, before the word at ${w.t}s`);
+          if (last[1] + last[2] > w.t + w.d + 0.016) say(`${b.id} "${w.k}": ${row} steps end ${r2(last[1] + last[2])}s, after the word at ${r2(w.t + w.d)}s`);
+          if (beats[0][1] > w.t + 0.25) say(`${b.id} "${w.k}": ${row} steps start ${r2(beats[0][1] - w.t)}s into the word`);
+          if (last[1] + last[2] < w.t + w.d - 0.25) say(`${b.id} "${w.k}": ${row} steps end ${r2(w.t + w.d - last[1] - last[2])}s before the word does`);
+          beats.forEach(([text, bt, bd], n) => {
+            if (bd <= 0) say(`${b.id} "${w.k}": ${row} step "${text}" lasts ${bd}s`);
+            if (!near(starts, b.at + bt, 0.011)) say(`${b.id} "${w.k}": ${row} step "${text}" starts ${r2(b.at + bt)}s, which no syllable does`);
+            if (!near(ends, b.at + bt + bd, 0.016)) say(`${b.id} "${w.k}": ${row} step "${text}" ends ${r2(b.at + bt + bd)}s, which no syllable does`);
+            const was = beats[n - 1];
+            if (was && bt + 0.011 < was[1] + was[2]) say(`${b.id} "${w.k}": ${row} step "${text}" starts before the one before it ends`);
+          });
+        });
       });
     });
 
@@ -88,5 +126,8 @@ want.forEach((song, key) => {
   });
 });
 
-console.log(bad ? `\n${bad} problem(s) in ${words} words` : `\nevery timing checks out, ${words} words across ${want.size} songs`);
+console.log('');
+console.log(bad
+  ? `${bad} problem(s) in ${words} words`
+  : `every timing checks out: ${words} words, ${steps} sweep steps, ${want.size} songs`);
 process.exitCode = bad ? 1 : 0;
