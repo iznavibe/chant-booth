@@ -535,14 +535,14 @@
       </p>
       <h2 data-t="before">Before you start</h2>
       <ol class="steps">
-        <li data-t="s1">Somewhere quiet. Hold the phone near your mouth.</li>
+        <li data-t="s1">Go somewhere quiet, and keep the mic close to your mouth.</li>
         <li data-t="s2">Press Guide to hear it, then Record and sing along.</li>
         <li data-t="s3">Redo anything as many times as you like.</li>
         <li data-t="s4">After you finish, upload your takes.</li>
       </ol>
       <div>
         <label for="handle" class="muted" data-t="handle">Username (optional)</label>
-        <input id="handle" type="text" placeholder="@yourhandle" maxlength="40" autocomplete="off">
+        <input id="handle" type="text" maxlength="40" autocomplete="off">
       </div>
       <button class="primary full" id="begin" data-t="begin">iznaya</button>
       <p class="caution">
@@ -739,7 +739,7 @@ const EN = {
     + "all practise. Let's turn up to the concert ready and cheer izna on as "
     + 'loud as we can!',
   before: 'Before you start',
-  s1: 'Somewhere quiet. Hold the phone near your mouth.',
+  s1: 'Go somewhere quiet, and keep the mic close to your mouth.',
   s2: 'Press Guide to hear it, then Record and sing along.',
   s3: 'Redo anything as many times as you like.',
   s4: 'When you are done, press Upload my takes.',
@@ -787,12 +787,12 @@ const EN = {
 
   emptyNote: 'The recording had nothing in it. Close other apps using the mic, reload '
     + 'the page, and allow the microphone when asked.',
-  rawNote: 'This phone would not record through the processing, so it is switched '
+  rawNote: 'This device would not record through the processing, so it is switched '
     + 'off. Takes will be a little quieter, which is fine, and this one needs '
     + 'doing again.',
   silentNote: 'Nothing reached the recording. Check nothing else is holding the mic, '
     + 'and try once more.',
-  quietNote: 'That one came out quiet. Have a listen, and try closer to the phone if '
+  quietNote: 'That one came out quiet. Have a listen, and try closer to the mic if '
     + 'it is hard to hear.',
 
   ofRecorded: 'of {m} recorded',
@@ -813,7 +813,7 @@ const EN = {
   micRefused: 'The browser refused mic access on this page.',
   micStopped: 'The mic stopped before it started. Try again.',
   micFailed: 'The mic could not start.',
-  noUpload: 'Uploading is not set up yet, so these takes live only on this phone.',
+  noUpload: 'Uploading is not set up yet, so these takes live only on this device.',
   allSentN: 'All {n} sent. Thank you!',
   cannotRecord: 'This browser cannot record audio. Open the link in Chrome, or in '
     + 'Safari on iPhone.',
@@ -824,7 +824,7 @@ const KO = {
   about: '나야들의 목소리를 모아 응원법 가이드 영상을 만들고 있어요. '
     + '다 같이 연습해서 콘서트 날 이즈나를 힘껏 응원해요!',
   before: '시작하기 전에',
-  s1: '조용한 곳에서 휴대폰을 입 가까이 대주세요.',
+  s1: '조용한 곳에서 마이크를 입 가까이 대주세요.',
   s2: '가이드를 눌러 들어보고, 녹음을 눌러 따라 외쳐주세요.',
   s3: '몇 번이든 다시 녹음할 수 있어요.',
   s4: '다 녹음하고 나면 마지막에 ‘녹음 보내기’를 눌러주세요.',
@@ -872,11 +872,11 @@ const KO = {
 
   emptyNote: '녹음에 아무것도 담기지 않았어요. 마이크를 쓰는 다른 앱을 닫고, '
     + '페이지를 새로고침한 다음 마이크를 허용해 주세요.',
-  rawNote: '이 휴대폰은 음성 보정을 거치면 녹음이 안 돼서 보정을 껐어요. '
+  rawNote: '이 기기는 음성 보정을 거치면 녹음이 안 돼서 보정을 껐어요. '
     + '소리는 조금 작아지지만 괜찮으니, 이번 구간만 다시 녹음해 주세요.',
   silentNote: '녹음에 소리가 들어오지 않았어요. 다른 앱이 마이크를 쓰고 있지 않은지 '
     + '확인하고 한 번 더 해주세요.',
-  quietNote: '조금 작게 녹음됐어요. 들어보시고 잘 안 들리면 휴대폰을 더 가까이 대고 '
+  quietNote: '조금 작게 녹음됐어요. 들어보시고 잘 안 들리면 마이크를 더 가까이 대고 '
     + '다시 해주세요.',
 
   ofRecorded: ' / {m}개 녹음',
@@ -897,7 +897,7 @@ const KO = {
   micRefused: '이 페이지에서 마이크를 쓸 수 없게 돼 있어요.',
   micStopped: '마이크가 시작되기도 전에 멈췄어요. 다시 해주세요.',
   micFailed: '마이크를 켜지 못했어요.',
-  noUpload: '업로드가 아직 준비되지 않아서, 이 녹음은 휴대폰에만 남아 있어요.',
+  noUpload: '업로드가 아직 준비되지 않아서, 이 녹음은 이 기기에만 남아 있어요.',
   allSentN: '{n}개 모두 보냈어요. 고마워요!',
   cannotRecord: '이 브라우저에서는 녹음이 안 돼요. 크롬, 아이폰이라면 사파리로 열어주세요.',
 };
@@ -906,7 +906,7 @@ const JA = {
   about: 'ナヤの声を集めて、ファンチャントのガイド映像をつくっています。'
     + 'みんなで練習して、コンサートではiznaを思いっきり応援しましょう！',
   before: 'はじめる前に',
-  s1: '静かな場所で、スマホを口の近くに持ってください。',
+  s1: '静かな場所で、マイクを口の近くに持ってください。',
   s2: 'ガイドを押して聞いてから、録音を押して一緒に叫んでください。',
   s3: '何度でも録り直せます。',
   s4: '全部録音したら、最後に「録音を送る」を押してください。',
@@ -959,7 +959,7 @@ const JA = {
   silentNote: '録音に音が届いていません。他のアプリがマイクを使っていないか確かめて、'
     + 'もう一度お試しください。',
   quietNote: '少し小さく録れました。聞いてみて、聞き取りにくければ'
-    + 'スマホをもう少し近づけて録り直してください。',
+    + 'マイクをもう少し近づけて録り直してください。',
 
   ofRecorded: ' / {m} ブロック録音済み',
   blockOf: '{m} ブロック中 {n} 番目',
