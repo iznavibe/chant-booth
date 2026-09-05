@@ -451,7 +451,8 @@
       </label>
       <p class="muted" id="guide-note">
         A clip for this block, or the whole song to place every block from. Then
-        drag the line onto the first word, and the count before it stays silent.
+        drag the line onto the first word. Whatever runs up to it is played
+        under the count; where there is none, the count is silent.
       </p>
       <canvas id="wave" hidden style="width:100%;height:156px;touch-action:none;
               border-radius:12px;background:var(--sunk);cursor:grab"></canvas>
@@ -462,6 +463,7 @@
         <button class="primary" id="guide-save">Save this block</button>
       </div>
       <button class="ghost full" id="guide-all" hidden>Place every block from this</button>
+      <button class="ghost full" id="guide-redo" hidden>Add the run-up to guides already placed</button>
     </div>
 
     <div class="pips" id="pips"></div>
@@ -1286,6 +1288,24 @@ function countIn(then) {
 /** How long a guide runs: the block, with a take's lead-in and tail. */
 const guideLength = (b) => PRE + b.dur + TAIL;
 
+/**
+ * What to play, given where the first word sits in the file.
+ *
+ * The lead-in is heard, not skipped, wherever the file has anything before the
+ * mark. An intro running into the cheer is exactly what a fan needs to come in
+ * on, and starting dead on the shout gives them nothing to ride. Only the part
+ * the file cannot supply is silence, so a clip cut hard to the first word still
+ * gets its beat of quiet and everything lines up either way.
+ */
+function windowFor(mark, b) {
+  const want = mark - PRE;
+  // `mark` is kept alongside so the window can be worked out again later,
+  // which is how a guide placed under older rules is brought forward.
+  return want >= 0
+    ? { mark, from: want, len: guideLength(b), lead: 0 }
+    : { mark, from: 0, len: guideLength(b) + want, lead: -want };
+}
+
 /** Where every block's guide lives for this song. One fetch, at load. */
 async function loadGuideMap() {
   guideAt = {};
@@ -1505,7 +1525,7 @@ async function saveGuide(c, blob, mime) {
   try {
     await put('guides', `${SONG}/${c.id}`, blob, mime, true);
     guideFiles.delete(c.id);
-    guideAt[c.id] = { file: c.id, from: PRE, len: c.dur + TAIL, lead: PRE };
+    guideAt[c.id] = { file: c.id, from: 0, len: guideLength(c), lead: 0 };
     await writeGuideMap();
     note('Guide saved. Everyone will hear this when they press Guide.');
   } catch (e) {
@@ -1620,14 +1640,18 @@ function drawWave() {
   }
   g.globalAlpha = 1;
 
-  // ---- what will be heard ----
+  // ---- what will be heard: the run-up, then the block ----
+  const runUp = Math.min(PRE, placing.mark);
   g.fillStyle = tone('--pink-wash');
+  g.globalAlpha = 0.5;
+  g.fillRect(mark - dx(runUp), WAVE_TOP - 3, dx(runUp), WAVE_H + 6);
+  g.globalAlpha = 1;
   g.fillRect(mark, WAVE_TOP - 3, Math.max(4, dx(heard)), WAVE_H + 6);
 
   // ---- waveform ----
   const mid = WAVE_TOP + WAVE_H / 2;
   placing.peaks.forEach((p, i) => {
-    const inside = i >= mark && i <= mark + dx(heard);
+    const inside = i >= mark - dx(runUp) && i <= mark + dx(heard);
     g.fillStyle = inside ? tone('--pink') : tone('--muted');
     g.globalAlpha = inside ? 1 : 0.3;
     const h = Math.max(1, p * (WAVE_H - 6));
@@ -1679,8 +1703,10 @@ function showPlacing() {
   if (!on) return;
   const b = CHANTS[at];
   const off = placing.mark - b.at;
+  const runUp = Math.min(PRE, placing.mark);
   $('wave-at').textContent =
-    `${placing.file.name} · first word at ${placing.mark.toFixed(2)}s` +
+    `${placing.file.name} · first word at ${placing.mark.toFixed(2)}s · ` +
+    (runUp > 0.02 ? `${runUp.toFixed(2)}s of run-up before it` : 'no run-up, so a silent count') +
     (placing.buf.duration >= 45 ? ` · ${off >= 0 ? '+' : ''}${off.toFixed(2)}s off the timings` : '');
   drawWave();
 }
@@ -1739,6 +1765,34 @@ async function uploadGuide(e) {
   }
 }
 
+/**
+ * Bring guides placed under the old rules forward.
+ *
+ * They were saved as a silent count then the shout, because that was all the
+ * page could do. Their stored start was the mark, so the run-up can be worked
+ * out from what is already there and nothing has to be placed again.
+ */
+$('guide-redo').addEventListener('click', async () => {
+  const old = CHANTS.filter((b) => guideAt[b.id] && guideAt[b.id].mark === undefined);
+  if (!old.length) { $('guide-note').textContent = 'Every guide already has its run-up.'; return; }
+  $('guide-redo').disabled = true;
+  try {
+    old.forEach((b) => {
+      const was = guideAt[b.id];
+      guideAt[b.id] = { file: was.file, ...windowFor(was.from, b) };
+    });
+    await writeGuideMap();
+    $('guide-note').textContent =
+      `${old.length} guide${old.length === 1 ? '' : 's'} brought forward. Press Guide to hear one.`;
+    $('guide-redo').hidden = true;
+  } catch (err) {
+    $('guide-note').textContent = locked(err.message)
+      ? 'Guides are locked. Paste the service_role key above.'
+      : 'That did not save: ' + err.message;
+  }
+  $('guide-redo').disabled = false;
+});
+
 $('guide-snap').addEventListener('click', () => {
   if (!placing) return;
   placing.mark = 0;
@@ -1748,7 +1802,8 @@ $('guide-snap').addEventListener('click', () => {
 $('guide-hear').addEventListener('click', () => {
   if (!placing || busy) return;
   const b = CHANTS[at];
-  playWindow(placing.buf, placing.mark, b.dur + TAIL, PRE);
+  const w = windowFor(placing.mark, b);
+  playWindow(placing.buf, w.from, w.len, w.lead);
   sweep(b, () => {});
 });
 
@@ -1766,9 +1821,7 @@ $('guide-save').addEventListener('click', async () => {
   $('guide-save').disabled = true;
   $('guide-note').textContent = 'Saving…';
   try {
-    await saveGuideFile(b.id, {
-      [b.id]: { file: b.id, from: placing.mark, len: b.dur + TAIL, lead: PRE },
-    });
+    await saveGuideFile(b.id, { [b.id]: { file: b.id, ...windowFor(placing.mark, b) } });
     $('guide-note').textContent = `Block ${at + 1} done. Press Guide to hear it as a fan will.`;
     placing = null;
     showPlacing();
@@ -1789,7 +1842,7 @@ $('guide-all').addEventListener('click', async () => {
   try {
     const entries = {};
     CHANTS.forEach((x) => {
-      entries[x.id] = { file: '_song', from: x.at + shift, len: x.dur + TAIL, lead: PRE };
+      entries[x.id] = { file: '_song', ...windowFor(x.at + shift, x) };
     });
     await saveGuideFile('_song', entries);
     $('guide-note').textContent =
@@ -2050,6 +2103,8 @@ async function loadSong(name) {
   $('title').textContent = GUIDE ? 'Guides' : 'VibeChant';
   if (GUIDE) {
     $('guidebox').hidden = false;
+    $('guide-redo').hidden =
+      !Object.values(guideAt).some((e) => e && e.mark === undefined);
     // Nothing here is a take, so the way to the take list is noise.
     $('btn-done').hidden = true;
   }

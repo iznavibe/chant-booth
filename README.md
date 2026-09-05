@@ -293,10 +293,11 @@ trim times and the window lands at 0 with no dragging.
 **Placing a guide is one mark: where the first word is sung.** Drag the line onto
 it. That is the whole interaction.
 
-Everything follows from that mark. The lead-in is always silent, whatever the
-file holds before it, so a clip with an intro in front of the fanchant needs no
-trimming: the intro simply never plays. What a fan hears is the count, a beat of
-quiet, then the chant beginning exactly where it was put.
+Everything follows from that mark. Whatever runs up to it is played under the
+count, so an intro leading into a cheer is heard the way it is in the song and a
+fan has something to come in on. Only what the file cannot supply is silence, so
+a clip cut hard to the first word still gets its beat of quiet. Either way the
+first word lands at the same moment and the sweep agrees with it.
 
 A window with two ends was the wrong idea. It asked where the *block* begins,
 which is a second before anything is heard, and that second may be silence, the
