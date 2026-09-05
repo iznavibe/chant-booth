@@ -721,6 +721,7 @@ const EN = {
   legendStruck: 'Sing the words in <b>Bold</b>. Crossed out is izna underneath you.',
   firstListen: 'Listen first, then record.',
   guideFirst: 'Guide first, then record.',
+  whenReady: 'Record your voice when ready.',
   recorded: 'Recorded. Play it back, or redo it.',
   shout: 'Shout!',
   noGuide: 'No voice guide yet. Follow the words.',
@@ -802,6 +803,7 @@ const KO = {
   legendStruck: '<b>굵게</b> 표시된 부분을 외쳐주세요. 취소선이 그어진 곳은 이즈나가 부르는 부분이에요.',
   firstListen: '먼저 들어보고 녹음해 주세요.',
   guideFirst: '가이드를 먼저 들어보세요.',
+  whenReady: '준비되면 녹음해 주세요.',
   recorded: '녹음됐어요. 들어보거나 다시 할 수 있어요.',
   shout: '외쳐요!',
   noGuide: '아직 가이드가 없어요. 가사를 보고 따라 해주세요.',
@@ -880,6 +882,7 @@ const JA = {
   legendStruck: '<b>太字</b>のところを叫んでください。取り消線はiznaが歌っているところです。',
   firstListen: 'まず聞いてから録音してください。',
   guideFirst: 'ガイドを聞いてから録音してください。',
+  whenReady: '準備ができたら録音してください。',
   recorded: '録音できました。聞き直しも録り直しもできます。',
   shout: '叫んで！',
   noGuide: 'まだガイドがありません。歌詞を見て合わせてください。',
@@ -1754,7 +1757,7 @@ async function listen() {
   buttons(false);
 
   const done = () => {
-    setStatus(GUIDE ? 'Record the guide when ready.' : '');
+    setStatus(GUIDE ? t('whenReady') : '');
     $('countdown').textContent = '';
     busy = false;
     buttons(true);
