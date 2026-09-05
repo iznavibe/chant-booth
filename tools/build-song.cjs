@@ -380,17 +380,29 @@ for (const idx of blocks.values()) {
       return best;
     });
 
-    // Runs of words under the same romaji are one word, up to as many
-    // syllables as that romaji actually has.
+    /*
+     * Words split for the sweep are put back together.
+     *
+     * Two ways they get split. A word can be cut mid-letter, "me" then
+     * "tronome", to give the sweep a step in the middle of it; the giveaway is
+     * a piece ending in a letter with the next beginning in one and no space
+     * between, which never happens across a word boundary. Or the lyric is cut
+     * finer than its romaji, several syllables under one romaji word, which is
+     * capped at however many syllables that romaji has so a loose timing cannot
+     * drag in the syllable after it.
+     */
+    const midWord = (a2, b2) => /[A-Za-z]$/.test(a2.text) && /^[A-Za-z]/.test(b2.text);
+
     const groups = [];
     src.forEach((u, n) => {
       const prev = groups[groups.length - 1];
       const room = owner[n] >= 0 ? syllablesIn(roRaw[owner[n]].text) : 1;
-      if (prev
+      const sameRomaji = prev
         && owner[n] >= 0
         && owner[n] === owner[prev.at]
-        && rowOf(u) === rowOf(src[prev.at])
-        && prev.units.length < room) {
+        && prev.units.length < room;
+      const joined = prev && midWord(prev.units[prev.units.length - 1], u);
+      if (prev && (sameRomaji || joined) && rowOf(u) === rowOf(src[prev.at])) {
         prev.units.push(u);
       } else {
         groups.push({ at: n, units: [u] });
@@ -417,7 +429,9 @@ for (const idx of blocks.values()) {
         const last = g.units[g.units.length - 1];
         return {
           k: strip(g.units.map((u) => u.text).join('')).trim(),
-          r: strip(even ? ((roRaw[g.at] && roRaw[g.at].text) || '') : parts[n].join('')).trim(),
+          r: strip(even
+            ? g.units.map((u, m) => (roRaw[g.at + m] && roRaw[g.at + m].text) || '').join('')
+            : parts[n].join('')).trim(),
           t: +(first.start - start).toFixed(2),
           d: +(last.end - first.start).toFixed(2),
           c: g.units.some((u, m) => mine[g.at + m]) ? 1 : 0,
