@@ -148,6 +148,41 @@ async function remove(paths) {
     console.log(`${names.length} named singers, written to ${out}/credits.txt`);
   }
 
+  /*
+   * How far to pull each take forward.
+   *
+   * What went up is the recording untouched, and a microphone hands a sound
+   * over some way after it happened: on a phone a fifth of a second, more
+   * through earphones. The booth measures that from a click it can hear in the
+   * recording and sends the figure alongside. Shifting a take earlier by its
+   * own number puts the voice where the naya actually sang it.
+   *
+   * A take with no figure is left alone rather than guessed at.
+   */
+  const late = [];
+  for (const f of done.filter((p) => p.includes('_singers/'))) {
+    try {
+      const j = JSON.parse(fs.readFileSync(path.join(out, f.slice(song.length + 1)), 'utf8'));
+      const session = f.split('/').pop().split('-')[0];
+      const lags = j.lags || {};
+      const blocks = Object.keys(lags);
+      if (blocks.length) {
+        blocks.forEach((b) => late.push([b, session, Math.round(lags[b] * 1000)]));
+      } else if (j.micLag) {
+        // Sent before takes carried their own: one figure for the session.
+        late.push(['every block', session, Math.round(j.micLag * 1000)]);
+      }
+    } catch (e) { /* a session that says nothing asks for nothing */ }
+  }
+  if (late.length) {
+    late.sort((a, b) => (a[1] + a[0]).localeCompare(b[1] + b[0]));
+    const doc = ['block\tsession\tpull earlier by']
+      .concat(late.map((r) => `${r[0]}\t${r[1]}\t${r[2]}ms`))
+      .join('\n');
+    fs.writeFileSync(path.join(out, 'delays.txt'), doc + '\n');
+    console.log(`${late.length} take(s) carry a delay, written to ${out}/delays.txt`);
+  }
+
   if (wav || mp3) console.log(`converted to ${wav ? 'wav' : 'mp3'}, mono`);
 
   if (!wipe) {

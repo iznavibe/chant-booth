@@ -3163,8 +3163,26 @@ async function uploadAll() {
     await put(
       'takes',
       `${SONG}/_singers/${sessionId}-${Date.now()}.json`,
+      /*
+       * Every take's own delay, not just this session's latest.
+       *
+       * The file that goes up is the recording untouched, so the voice in it
+       * still sits however far behind the microphone was. The booth corrects
+       * for that when playing back; the editing has to do it too, and it needs
+       * a number per take rather than one for the session, because somebody may
+       * record half of it on the speaker and half through earphones and those
+       * are not the same delay.
+       */
       new Blob([JSON.stringify({
-        handle, at: new Date().toISOString(), kept: uploaded.size, micLag,
+        handle,
+        at: new Date().toISOString(),
+        kept: uploaded.size,
+        micLag,
+        lags: Object.fromEntries(
+          [...takes.entries()]
+            .filter(([, take]) => take.lag > 0)
+            .map(([id, take]) => [id, take.lag])
+        ),
       })],
         { type: 'application/json' }),
       'application/json'
