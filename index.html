@@ -1487,16 +1487,56 @@ async function micTrouble(e) {
  * file. When those two disagree the recording path is at fault, which is the
  * one failure a person holding a phone could never diagnose themselves.
  */
-async function peakOf(blob) {
+/**
+ * How late this phone hands back what it hears, and how loud the take is.
+ *
+ * A fan reads the words as they sweep and shouts on time, but a microphone
+ * hands the sound over some way after it happened, and on a phone that can be
+ * a fifth of a second. The take then sits late against everything else, which
+ * is exactly what it sounds like beside the guide.
+ *
+ * It is measured rather than guessed. The count-in's last click sounds at the
+ * moment recording starts, and this page turns echo cancellation off, so that
+ * click is in the recording: where it lands is how far behind the phone is
+ * running as a round trip, and taking off the time the speaker itself needed
+ * leaves the part that is the microphone's.
+ *
+ * Nothing is assumed when it cannot be found, which is most of the reason to
+ * do it this way. Headphones, a muted speaker, a container that will not
+ * decode: all of them simply leave the take where it was.
+ */
+async function heardIn(blob) {
   try {
     const c = audio();
     const buf = await c.decodeAudioData(await blob.slice(0).arrayBuffer());
     const d = buf.getChannelData(0);
     let peak = 0;
     for (let i = 0; i < d.length; i += 16) peak = Math.max(peak, Math.abs(d[i]));
-    return peak;
+
+    /*
+     * The click, if it is there, is in the first moments and is the loudest
+     * thing in them: a fan is counting themselves in, not shouting yet, and
+     * the first word is a whole second away. The window is kept just wider
+     * than any real round trip, so a noise made later cannot be taken for it.
+     */
+    const upto = Math.min(d.length, Math.floor(buf.sampleRate * 0.45));
+    let loud = 0;
+    for (let i = 0; i < upto; i += 1) loud = Math.max(loud, Math.abs(d[i]));
+    let lag = -1;
+    if (loud > 0.02) {
+      let onset = -1;
+      for (let i = 0; i < upto; i += 1) {
+        if (Math.abs(d[i]) > loud * 0.35) { onset = i; break; }
+      }
+      const trip = onset < 0 ? -1 : onset / buf.sampleRate;
+      const out = c.outputLatency || c.baseLatency || 0;
+      const mine = trip - out;
+      // Anything outside this is not the click and not worth acting on.
+      if (mine > 0.01 && mine < 0.3) lag = +mine.toFixed(3);
+    }
+    return { peak, lag };
   } catch (e) {
-    return -1;
+    return { peak: -1, lag: -1 };
   }
 }
 
@@ -1533,6 +1573,15 @@ const FLAT_STRIKE = new Set(['metronome', 'izna']);
  * Without this, tapping play twice layers a take over itself and starting a
  * recording leaves the last one still playing straight into the microphone.
  */
+/*
+ * How far behind this phone's microphone runs, as last measured.
+ *
+ * A property of the phone rather than of any one take, so the newest reading
+ * stands for all of them, and it goes up with the session so the editing knows
+ * how far to pull that singer forward.
+ */
+let micLag = 0;
+
 let playing = [];
 
 /** Track whatever is sounding, so it can all be stopped together. */
@@ -1579,7 +1628,7 @@ async function prepare(src) {
       : await src.arrayBuffer();
     const buf = await c.decodeAudioData(bytes);
     return {
-      start(keep) {
+      start(keep, into, when) {
         const node = c.createBufferSource();
         node.buffer = buf;
         const gain = c.createGain();
@@ -1591,7 +1640,7 @@ async function prepare(src) {
         limit.release.value = 0.12;
         node.connect(gain).connect(limit).connect(c.destination);
         if (!keep) stopPlaying();
-        node.start();
+        node.start(when === undefined ? c.currentTime + AHEAD : when, Math.max(0, into || 0));
         sounding(node);
         return node;
       },
@@ -1600,9 +1649,10 @@ async function prepare(src) {
   } catch (e) {
     const url = typeof src === 'string' ? src : URL.createObjectURL(src);
     return {
-      start(keep) {
+      start(keep, into) {
         if (!keep) stopPlaying();
         const el = new Audio(url);
+        if (into) el.currentTime = into;
         el.play().catch(() => {});
         sounding(el);
         return el;
@@ -2008,7 +2058,7 @@ async function loadGuideMap() {
  * put. Whatever the file holds before the mark is never played, so a clip with
  * an intro in front of the fanchant needs no trimming at all.
  */
-function playWindow(buf, from, len, lead, keep, level) {
+function playWindow(buf, from, len, lead, keep, level, when) {
   const c = audio();
   const node = c.createBufferSource();
   node.buffer = buf;
@@ -2021,7 +2071,7 @@ function playWindow(buf, from, len, lead, keep, level) {
   limit.release.value = 0.12;
   node.connect(gain).connect(limit).connect(c.destination);
   if (!keep) stopPlaying();
-  node.start(c.currentTime + AHEAD + (lead || 0), Math.max(0, from), len);
+  node.start((when === undefined ? c.currentTime + AHEAD : when) + (lead || 0), Math.max(0, from), len);
   sounding(node);
   return node;
 }
@@ -2126,13 +2176,14 @@ async function record() {
       /*
        * Only a file that is provably silent is refused.
        *
-       * `peakOf` cannot read every container -- iOS records an mp4 that Safari
+       * Reading it cannot be relied on -- iOS records an mp4 that Safari
        * will not always decode -- and a quiet meter is not evidence of a quiet
        * recording. Throwing away a good take because a measurement failed is
        * far worse than keeping a poor one, so anything unproven is kept, with
        * a word to go and listen.
        */
-      const peak = await peakOf(blob);
+      const { peak, lag } = await heardIn(blob);
+      if (lag > 0) micLag = lag;
 
       if (peak >= 0 && peak < 0.005) {
         if (!useRaw) {
@@ -2151,7 +2202,7 @@ async function record() {
       const old = takes.get(c.id);
       if (old) URL.revokeObjectURL(old.url);
       const n = (old ? old.n : 0) + 1;
-      takes.set(c.id, { blob, url: URL.createObjectURL(blob), mime: rec.mimeType || MIME, n });
+      takes.set(c.id, { blob, url: URL.createObjectURL(blob), mime: rec.mimeType || MIME, n, lag });
       keep(`${SONG}:${c.id}`, { blob, mime: rec.mimeType || MIME, n, sent: false });
       setStatus(t('gotIt'));
       $('btn-record').textContent = t(GUIDE ? 'redoGuide' : 'redo');
@@ -2773,7 +2824,9 @@ async function uploadAll() {
     await put(
       'takes',
       `${SONG}/_singers/${sessionId}-${Date.now()}.json`,
-      new Blob([JSON.stringify({ handle, at: new Date().toISOString(), kept: uploaded.size })],
+      new Blob([JSON.stringify({
+        handle, at: new Date().toISOString(), kept: uploaded.size, micLag,
+      })],
         { type: 'application/json' }),
       'application/json'
     );
@@ -2826,19 +2879,32 @@ async function playTake() {
 
   const where = guideAt[c.id];
   const buf = where ? await guideBuffer(where.file) : null;
-  await wake();
-  const wait = (AHEAD + (buf && where.hold > 0 ? where.hold : 0)) * 1000;
-  if (buf) playWindow(buf, where.from, where.len, where.lead || 0, false, PLAY_GAIN * GUIDE_UNDER);
+  const ctx = await wake();
 
-  // The take comes in where the sweep did when it was recorded, which is after
-  // whatever run-up the guide has in front of the words.
+  /*
+   * Both sounds are given a time on the audio clock, from one reading of it.
+   *
+   * Two voices are being lined up here, and a fan is listening for whether
+   * their own is late. Starting one and then the other a timer later puts
+   * whatever the timer was out between them, which is the very thing they are
+   * trying to hear. Only the sweep runs on a timer, because it is watched
+   * rather than heard and a frame either way does not show.
+   */
+  const opens = ctx.currentTime + AHEAD;
+  const enter = opens + (buf && where.hold > 0 ? where.hold : 0);
+  if (buf) {
+    playWindow(buf, where.from, where.len, where.lead || 0, false, PLAY_GAIN * GUIDE_UNDER, opens);
+  }
+  // Started part-way in by however late this phone's microphone was, which
+  // puts the voice back where the fan sang it rather than where it landed.
+  mine.start(true, take.lag > 0 ? take.lag : 0, enter);
+
   const mark = stops;
   showPlaying(true);
   setTimeout(() => {
     if (stops !== mark) return;      // stopped while the run-up was playing
-    mine.start(true);
     sweep(c, () => stopPlaying());
-  }, wait);
+  }, Math.max(0, (enter - ctx.currentTime) * 1000));
 }
 
 $('btn-play').addEventListener('click', playTake);
