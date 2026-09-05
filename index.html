@@ -1391,9 +1391,10 @@ function lift(raw) {
     ceiling.release.value = 0.05;
 
     // The room as the microphone hears it, before any of this touches it.
-    const raw = c.createAnalyser();
-    raw.fftSize = 512;
-    raw.smoothingTimeConstant = 0;
+    // Never `raw`: that is the stream this was handed, three lines up.
+    const room = c.createAnalyser();
+    room.fftSize = 512;
+    room.smoothingTimeConstant = 0;
     /*
      * The same signal written to both channels, explicitly.
      *
@@ -1406,7 +1407,7 @@ function lift(raw) {
      */
     const dest = c.createMediaStreamDestination();
     const both = c.createChannelMerger(2);
-    src.connect(raw);
+    src.connect(room);
     src.connect(gain).connect(squash).connect(ceiling);
     ceiling.connect(both, 0, 0);
     ceiling.connect(both, 0, 1);
@@ -1428,10 +1429,18 @@ function lift(raw) {
     mute.gain.value = 0;
     ceiling.connect(analyser).connect(mute).connect(c.destination);
 
-    chain = { src, gain, squash, ceiling, raw, both, dest, analyser, mute };
+    chain = { src, gain, squash, ceiling, room, both, dest, analyser, mute };
     return dest.stream;
   } catch (e) {
-    // Any browser that will not build the chain records the plain input.
+    /*
+     * Any browser that will not build the chain records the plain input.
+     *
+     * Said out loud, because this catch is meant for a browser that cannot do
+     * something and it will just as happily swallow a mistake in the building.
+     * It did: one shadowed name threw here on every device, and what it looked
+     * like from outside was a microphone that had stopped working.
+     */
+    console.warn('recording chain not built, using the plain mic:', e);
     analyser = null;
     chain = null;
     return raw;
@@ -1492,10 +1501,10 @@ function level() { return peakOn(analyser); }
 let roomLevel = 0.005;
 
 async function setLift() {
-  if (!chain || !chain.raw) return LIFT[1];
+  if (!chain || !chain.room) return LIFT[1];
   const reads = [];
   for (let i = 0; i < 25; i += 1) {
-    reads.push(peakOn(chain.raw));
+    reads.push(peakOn(chain.room));
     await new Promise((go) => setTimeout(go, 10));
   }
   reads.sort((a, b) => a - b);
@@ -2105,14 +2114,14 @@ function note(text) {
 let heardLag = -1;
 
 function timeClick() {
-  if (!chain || !chain.raw) return;
+  if (!chain || !chain.room) return;
   heardLag = -1;
   const began = performance.now();
   const floor = Math.max(0.03, roomLevel * 4);
   (function look() {
     const since = performance.now() - began;
     if (heardLag >= 0 || since > 900) return;
-    if (since > 200 && peakOn(chain.raw) > floor) {
+    if (since > 200 && peakOn(chain.room) > floor) {
       const trip = (since - 250) / 1000;
       heardLag = trip > 0.01 && trip < 0.4 ? +trip.toFixed(3) : -1;
       if (heardLag >= 0) return;
