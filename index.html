@@ -255,18 +255,26 @@
    * a clipped gradient and are transparent, so the line would be too.
    */
   /*
-   * And it does not sweep. The fill says "this is yours, here is where you are
-   * in it", and none of that is true of a word izna sing over the top of. It
-   * sits in the unsung colour throughout, struck, as a place to find yourself
-   * rather than a thing to follow. Painted flat rather than clipped, so the
-   * letters are opaque and the line through them can take their own colour.
+   * And it sweeps like everything else, so a fan can see where izna are.
+   *
+   * The colour has to be named, because the letters are painted by a clipped
+   * gradient and are transparent, so the line would be too.
    */
-  .w.s {
+  .w.s { text-decoration: line-through; text-decoration-color: var(--unsung); }
+
+  /*
+   * Except where the struck words are most of the block.
+   *
+   * METRONOME and IZNA strike whole lines at a time, and sweeping all of them
+   * leaves the colour running everywhere at once with nothing to pick the
+   * fan's own words out of it. There they stay in the unsung colour, painted
+   * flat rather than clipped so the letters are opaque and the line through
+   * them can take their own colour.
+   */
+  .block.flat .w.s {
     background-image: none;
     color: var(--unsung);
     -webkit-text-fill-color: var(--unsung);
-    text-decoration: line-through;
-    text-decoration-color: var(--unsung);
   }
 
   /* The one being sung right now. */
@@ -305,6 +313,19 @@
   }
   .song small { margin-left: auto; color: var(--muted); font-weight: 400; font-size: .8rem; }
   .song { font-size: 1rem; cursor: pointer; }
+
+  /* Hearing a take against the guide, or on its own. */
+  .playRow {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 9px;
+    font-size: .82rem;
+    color: var(--muted);
+    cursor: pointer;
+    user-select: none;
+  }
+  .playRow input { accent-color: var(--pink); width: 16px; height: 16px; margin: 0; }
 
   .legend { font-size: .78rem; color: var(--muted); margin-bottom: 8px; }
   .legend b { color: var(--ink-soft); }
@@ -576,6 +597,10 @@
         <button class="ghost grow" id="btn-play" data-t-aria="playTake" aria-label="Play my take">▶</button>
         <button class="ghost icon" id="btn-next" data-t-aria="nextBlock" aria-label="Next block">›</button>
       </div>
+      <label class="playRow">
+        <input type="checkbox" id="with-guide" checked>
+        <span data-t="withGuide">Play back with the guide</span>
+      </label>
       <button class="ghost full" id="btn-done" data-t="myTakes">My takes</button>
     </div>
 
@@ -719,6 +744,8 @@ const EN = {
   prevBlock: 'Previous block',
   nextBlock: 'Next block',
   playTake: 'Play my take',
+  withGuide: 'Play back with the guide',
+  stopTake: 'Stop',
 
   legend: 'Sing the words in <b>Bold</b>',
   legendStruck: 'Sing the words in <b>Bold</b>. Crossed out is izna underneath you.',
@@ -802,6 +829,8 @@ const KO = {
   prevBlock: '이전 구간',
   nextBlock: '다음 구간',
   playTake: '내 녹음 듣기',
+  withGuide: '가이드와 함께 듣기',
+  stopTake: '정지',
 
   legend: '<b>굵게</b> 표시된 부분을 외쳐주세요',
   legendStruck: '<b>굵게</b> 표시된 부분을 외쳐주세요. 취소선이 그어진 곳은 이즈나가 부르는 부분이에요.',
@@ -883,6 +912,8 @@ const JA = {
   prevBlock: '前のブロック',
   nextBlock: '次のブロック',
   playTake: '録音を再生',
+  withGuide: 'ガイドと一緒に聞く',
+  stopTake: '停止',
 
   legend: '<b>太字</b>のところを叫んでください',
   legendStruck: '<b>太字</b>のところを叫んでください。取り消線はiznaが歌っているところです。',
@@ -1424,18 +1455,41 @@ async function peakOf(blob) {
  */
 const PLAY_GAIN = 2.6;
 
+/** Songs whose struck words stay unswept, being most of the block. */
+const FLAT_STRIKE = new Set(['metronome', 'izna']);
+
 /**
  * Whatever is sounding right now, so a second press replaces it.
  *
  * Without this, tapping play twice layers a take over itself and starting a
  * recording leaves the last one still playing straight into the microphone.
  */
-let playing = null;
+let playing = [];
+
+/** Track whatever is sounding, so it can all be stopped together. */
+function sounding(node) {
+  playing.push(node);
+  node.onended = () => {
+    playing = playing.filter((n) => n !== node);
+    if (!playing.length) showPlaying(false);
+  };
+  return node;
+}
 
 function stopPlaying() {
-  if (!playing) return;
-  try { playing.stop ? playing.stop(0) : playing.pause(); } catch (e) { /* already ended */ }
-  playing = null;
+  playing.forEach((n) => {
+    try { n.stop ? n.stop(0) : n.pause(); } catch (e) { /* already ended */ }
+  });
+  playing = [];
+  showPlaying(false);
+}
+
+/** The play button says what pressing it will do. */
+function showPlaying(on) {
+  const b = $('btn-play');
+  if (!b) return;
+  b.textContent = on ? '⏸' : '▶';
+  b.setAttribute('aria-label', t(on ? 'stopTake' : 'playTake'));
 }
 
 async function prepare(src) {
@@ -1446,7 +1500,7 @@ async function prepare(src) {
       : await src.arrayBuffer();
     const buf = await c.decodeAudioData(bytes);
     return {
-      start() {
+      start(keep) {
         const node = c.createBufferSource();
         node.buffer = buf;
         const gain = c.createGain();
@@ -1457,10 +1511,9 @@ async function prepare(src) {
         limit.attack.value = 0.003;
         limit.release.value = 0.12;
         node.connect(gain).connect(limit).connect(c.destination);
-        stopPlaying();
+        if (!keep) stopPlaying();
         node.start();
-        playing = node;
-        node.onended = () => { if (playing === node) playing = null; };
+        sounding(node);
         return node;
       },
       seconds: buf.duration,
@@ -1468,12 +1521,11 @@ async function prepare(src) {
   } catch (e) {
     const url = typeof src === 'string' ? src : URL.createObjectURL(src);
     return {
-      start() {
-        stopPlaying();
+      start(keep) {
+        if (!keep) stopPlaying();
         const el = new Audio(url);
         el.play().catch(() => {});
-        playing = el;
-        el.onended = () => { if (playing === el) playing = null; };
+        sounding(el);
         return el;
       },
       seconds: 0,
@@ -1575,6 +1627,8 @@ function paintChant(b) {
    * which then needs scrolling on a phone. So the gap is widest where there is
    * room for it and gives that room back as the lines pile up.
    */
+  // METRONOME and IZNA strike whole lines, so theirs stay unswept.
+  $('block').classList.toggle('flat', FLAT_STRIKE.has(SONG));
   const GAP = { 1: 10, 2: 20, 3: 17, 4: 14 };
   $('block').style.setProperty('--gap', (GAP[b.lines.length] || 11) + 'px');
   $('block').innerHTML = rows.join('');
@@ -1695,8 +1749,19 @@ function showTimes() {
  * then the tail. Drives the meter across the whole thing, so what is on screen
  * is exactly what is being recorded.
  */
+/*
+ * Only one sweep at a time, and it can be called off.
+ *
+ * Stepping to the next block, or stopping a playback halfway, used to leave
+ * the old loop running: it went on painting the words of a block nobody was
+ * looking at any more, over the top of the one that was.
+ */
+let sweepRun = 0;
+function stopSweep() { sweepRun += 1; }
+
 function sweep(c, onDone, opts) {
   const live = !!(opts && opts.live);
+  const run = ++sweepRun;
   clearFill();
   const total = PRE + c.dur + TAIL;
   const t0 = performance.now();
@@ -1708,6 +1773,7 @@ function sweep(c, onDone, opts) {
   if (live) $('level').hidden = false;
 
   (function frame() {
+    if (run !== sweepRun) return;
     const el = (performance.now() - t0) / 1000;
 
     if (el < PRE) {
@@ -1832,7 +1898,7 @@ async function loadGuideMap() {
  * put. Whatever the file holds before the mark is never played, so a clip with
  * an intro in front of the fanchant needs no trimming at all.
  */
-function playWindow(buf, from, len, lead) {
+function playWindow(buf, from, len, lead, keep) {
   const c = audio();
   const node = c.createBufferSource();
   node.buffer = buf;
@@ -1844,10 +1910,10 @@ function playWindow(buf, from, len, lead) {
   limit.attack.value = 0.003;
   limit.release.value = 0.12;
   node.connect(gain).connect(limit).connect(c.destination);
-  stopPlaying();
+  if (!keep) stopPlaying();
   node.start(c.currentTime + (lead || 0), Math.max(0, from), len);
-  playing = node;
-  node.onended = () => { if (playing === node) playing = null; };
+  sounding(node);
+  return node;
 }
 
 async function listen() {
@@ -2481,6 +2547,7 @@ paint();
 
 function goto(i) {
   if (busy) return;
+  stopSweep();
   stopPlaying();
   if (i !== at) { placing = null; showPlacing(); }
   at = Math.max(0, Math.min(CHANTS.length - 1, i));
@@ -2620,11 +2687,48 @@ $('btn-record').addEventListener('click', record);
 $('btn-prev').addEventListener('click', () => step(-1));
 $('btn-done').addEventListener('click', () => { if (!busy) finish(); });
 $('btn-next').addEventListener('click', () => step(1));
-$('btn-play').addEventListener('click', async () => {
+/**
+ * Hearing a take back.
+ *
+ * On its own it is a voice with nothing around it, and a fan cannot tell
+ * whether they came in on the beat or a moment late. Played against the guide
+ * with the words sweeping, it is the thing they will actually be part of, and
+ * being early or late is obvious without anyone having to say so.
+ *
+ * The take begins where the sweep began when it was recorded, so the two line
+ * up by starting together. A guide with a run-up before the words waits that
+ * long before either of them starts, exactly as it does when listening.
+ */
+async function playTake() {
   if (busy) return;
-  const t = takes.get(CHANTS[at].id);
-  if (!t) return;
-  (await prepare(t.blob)).start();
+  if (playing.length) { stopSweep(); stopPlaying(); return; }
+  const c = CHANTS[at];
+  const take = takes.get(c.id);
+  if (!take) return;
+
+  const mine = await prepare(take.blob);
+  if (!withGuide()) { mine.start(); showPlaying(true); return; }
+
+  const where = guideAt[c.id];
+  const buf = where ? await guideBuffer(where.file) : null;
+  const wait = buf && where.hold > 0 ? where.hold : 0;
+  if (buf) playWindow(buf, where.from, where.len, where.lead || 0);
+
+  const go = () => {
+    mine.start(true);
+    showPlaying(true);
+    sweep(c, () => stopPlaying());
+  };
+  if (wait) setTimeout(go, wait * 1000);
+  else go();
+}
+
+$('btn-play').addEventListener('click', playTake);
+
+/** Whether a take plays against the guide, remembered between visits. */
+function withGuide() { return $('with-guide').checked; }
+$('with-guide').addEventListener('change', () => {
+  try { localStorage.setItem('vibechant.withGuide', withGuide() ? '1' : '0'); } catch (e) { /* private mode */ }
 });
 
 // The progress bar doubles as a way back to any block.
@@ -2733,6 +2837,11 @@ $('title').addEventListener('click', () => { if (!busy) showPicker(); });
   store = await openStore();
   const who = await recall('handle');
   if (who) { handle = who; $('handle').value = who; }
+
+  try {
+    const said = localStorage.getItem('vibechant.withGuide');
+    if (said !== null) $('with-guide').checked = said === '1';
+  } catch (e) { /* private mode */ }
 
   if (GUIDE) {
     $('btn-record').textContent = t('recordGuide');
