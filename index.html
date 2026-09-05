@@ -120,6 +120,8 @@
 
   .muted { color: var(--muted); font-size: .88rem; }
   .soft { color: var(--ink-soft); font-size: .92rem; }
+  /* The one paragraph on the home screen, so it gets room to be read. */
+  .lede { color: var(--ink-soft); font-size: .95rem; line-height: 1.55; }
 
   /*
    * The two flags, and English as the way back.
@@ -216,7 +218,7 @@
   }
   /* A block as it reads in the video: the original, its romaji underneath,
      and the shouted parts standing out from the sung ones. */
-  .block { margin: 16px 0 4px; display: flex; flex-direction: column; gap: 10px; }
+  .block { margin: 16px 0 4px; display: flex; flex-direction: column; gap: var(--gap, 10px); }
   .ln { display: flex; flex-direction: column; gap: 1px; }
   .kr { font-size: clamp(1.05rem, 4.4vw, 1.35rem); line-height: 1.4; word-break: keep-all; }
   .ro { font-size: clamp(.82rem, 3.4vw, .96rem); line-height: 1.35; word-break: break-word; }
@@ -485,7 +487,7 @@
 
   <section id="screen-intro" hidden>
     <div class="card" style="display:flex;flex-direction:column;gap:14px">
-      <p class="soft" data-t="about">
+      <p class="lede" data-t="about">
         This is a fanchant project. izna's songs are here block by block, and
         nayas record the shouts one at a time. Every voice sent in is edited
         together into one crowd for the finished video.
@@ -688,7 +690,8 @@ const $ = (id) => document.getElementById(id);
 
 const EN = {
   pick: 'Pick a song',
-  about: "This is a fanchant project of izna's songs.",
+  about: "A fanchant project for izna's songs. Every voice sent in joins the "
+    + "crowd on the guide videos nayas practise with, ready for izna's concert.",
   before: 'Before you start',
   s1: 'Somewhere quiet. Hold the phone near your mouth.',
   s2: 'Press Guide to hear it, then Record and sing along.',
@@ -770,7 +773,8 @@ const EN = {
 
 const KO = {
   pick: '곡 고르기',
-  about: '이즈나 노래 응원법 프로젝트예요.',
+  about: '이즈나 노래 응원법 프로젝트예요. 보내주신 목소리는 나야들이 연습할 '
+    + '응원법 가이드 영상에 함께 담겨요. 이즈나 콘서트에서 다 같이 외쳐요!',
   before: '시작하기 전에',
   s1: '조용한 곳에서 휴대폰을 입 가까이 대주세요.',
   s2: '가이드를 눌러 들어보고, 녹음을 눌러 따라 외쳐주세요.',
@@ -849,7 +853,9 @@ const KO = {
 };
 const JA = {
   pick: '曲を選ぶ',
-  about: 'iznaの曲のファンチャントプロジェクトです。',
+  about: 'iznaの曲のファンチャントプロジェクトです。送っていただいた声は、'
+    + 'ナヤたちが練習するファンチャントガイド映像にまとめて入ります。'
+    + 'iznaのコンサートでみんなで叫びましょう！',
   before: 'はじめる前に',
   s1: '静かな場所で、スマホを口の近くに持ってください。',
   s2: 'ガイドを押して聞いてから、録音を押して一緒に叫んでください。',
@@ -1559,6 +1565,18 @@ function paintChant(b) {
       (ro.length ? `<p class="ro">${ro.join(' ')}</p>` : '') + '</div>'
     );
   }
+  /*
+   * The space between one line and the next, by how many there are.
+   *
+   * A line and the reading under it are one thing and the line below is
+   * another, and the gap is what says which is which. One number for every
+   * block cannot do that: it is too tight on a block of two, where the four
+   * rows run together into a paragraph, and too loose on a block of five,
+   * which then needs scrolling on a phone. So the gap is widest where there is
+   * room for it and gives that room back as the lines pile up.
+   */
+  const GAP = { 1: 10, 2: 20, 3: 17, 4: 14 };
+  $('block').style.setProperty('--gap', (GAP[b.lines.length] || 11) + 'px');
   $('block').innerHTML = rows.join('');
 
   fitLines();
@@ -2237,6 +2255,10 @@ function showPlacing() {
 window.addEventListener('resize', drawWave);
 // A line that fitted in portrait need not fit in landscape.
 window.addEventListener('resize', () => { if (!screens.rec.hidden) fitLines(); });
+// Nor need one measured in the fallback face fit once the real one arrives.
+if (document.fonts && document.fonts.ready) {
+  document.fonts.ready.then(() => { if (!screens.rec.hidden) fitLines(); });
+}
 
 async function uploadGuide(e) {
   const file = e.target.files && e.target.files[0];
@@ -2434,6 +2456,9 @@ function pips() {
 function show(which) {
   Object.entries(screens).forEach(([k, el]) => { el.hidden = k !== which; });
   window.scrollTo(0, 0);
+  // A block is often painted while its screen is still hidden, where there is
+  // no width to measure and so nothing to fit a line to. Now there is one.
+  if (which === 'rec') fitLines();
 }
 
 /**
