@@ -220,8 +220,11 @@
      and the shouted parts standing out from the sung ones. */
   .block { margin: 16px 0 4px; display: flex; flex-direction: column; gap: var(--gap, 10px); }
   .ln { display: flex; flex-direction: column; gap: 1px; }
-  .kr { font-size: clamp(1.05rem, 4.4vw, 1.35rem); line-height: 1.4; word-break: keep-all; }
-  .ro { font-size: clamp(.82rem, 3.4vw, .96rem); line-height: 1.35; word-break: break-word; }
+  /* Where a line does have to take two rows, they come out the same length. */
+  .kr { font-size: clamp(1.05rem, 4.4vw, 1.35rem); line-height: 1.4; word-break: keep-all;
+        text-wrap: balance; }
+  .ro { font-size: clamp(.82rem, 3.4vw, .96rem); line-height: 1.35; word-break: break-word;
+        text-wrap: balance; }
 
   /*
    * The karaoke fill.
@@ -1748,6 +1751,17 @@ function paintChant(b) {
 const FLOOR = 8;
 
 function fitLines() {
+  /*
+   * A block of one line has the room to take two.
+   *
+   * HEADACHE opens on all seven names at once, and squeezing that onto one row
+   * of a phone leaves it half the size of every other block for no reason but
+   * to stay on one row. There is nothing under it, so it takes the row below
+   * and comes out in two halves of the same length rather than one small line.
+   * A block that already has lines of its own has no row to spare, and shrinks.
+   */
+  const alone = $('block').querySelectorAll('.ln').length === 1;
+
   $('block').querySelectorAll('.kr, .ro').forEach((p) => {
     p.style.fontSize = '';
     p.style.whiteSpace = '';
@@ -1755,8 +1769,28 @@ function fitLines() {
     if (!room) return;
     p.style.whiteSpace = 'nowrap';
     const need = p.scrollWidth;
-    if (need <= room) { p.style.whiteSpace = ''; return; }
+    p.style.whiteSpace = '';
+    if (need <= room) return;
     const base = parseFloat(getComputedStyle(p).fontSize);
+
+    if (alone) {
+      /*
+       * Two rows is a line split in half; three is a paragraph. So the size
+       * that would take three or more comes down until it takes two, which is
+       * still far larger than the size that would keep it on one.
+       */
+      const tall = parseFloat(getComputedStyle(p).lineHeight) * 2.2;
+      let size = Math.min(base, base * ((2 * room) / need));
+      p.style.fontSize = size.toFixed(2) + 'px';
+      while (p.getBoundingClientRect().height > tall && size > FLOOR) {
+        size = Math.max(FLOOR, size * 0.94);
+        p.style.fontSize = size.toFixed(2) + 'px';
+      }
+      if (size >= base) p.style.fontSize = '';
+      return;
+    }
+
+    p.style.whiteSpace = 'nowrap';
     const want = base * (room / need);
     if (want < FLOOR) {
       // Too long to fit and still be read: let it wrap at the smallest size.
