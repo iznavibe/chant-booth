@@ -147,10 +147,28 @@ function tidyCommas(words) {
   return words.filter((w) => w.k.trim().length || w.r.trim().length);
 }
 
+/**
+ * A word spelled out for the sweep, put back together.
+ *
+ * The video writes 메!트!로!놈! and Me.t.ro.nome because the karaoke steps
+ * through them a piece at a time. Someone learning the chant wants the word.
+ *
+ * Two things are left alone. A dash is length, not spelling: 마-이 and
+ * SA-A-A-AIGN are held, not spelled, and joining them would be wrong. And a run
+ * of single letters is an initialism, so R.I.P stays R.I.P.
+ */
+const SPELLED = /^(?:[^\s.!·]{1,4}[.!·]){2,}[^\s.!·]{0,4}[.!·]?$/;
+const INITIALS = /^(?:[A-Za-z][.!·]){2,}[A-Za-z]?[.!·]?$/;
+
+function unspell(piece) {
+  if (!SPELLED.test(piece) || INITIALS.test(piece)) return piece;
+  return piece.replace(/[.!·]/g, '');
+}
+
 function strip(t) {
   let out = t.replace(/[()]/g, '');
   for (const [re, to] of NAMES) out = out.replace(re, to);
-  return out;
+  return out.replace(/\S+/g, unspell);
 }
 
 /**
