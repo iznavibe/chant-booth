@@ -1239,6 +1239,17 @@ const CAN_UPLOAD = !!(CFG.url && CFG.key);
  * open and goes nowhere else. Not localStorage, not the repository, not a
  * request to anywhere but Supabase.
  */
+/*
+ * The key that may write guides, held only for as long as the page is open.
+ *
+ * Guides are the one thing here that everybody hears, so writing them should
+ * take more than opening the page with a word in the address. The field for it
+ * existed and nothing ever read it, which meant every guide write went out
+ * under the key that ships in the page, and the bucket had to stay open to
+ * anyone for guides to work at all. Reading it is what lets the bucket be shut.
+ *
+ * Never stored. It is typed when it is needed and gone when the tab is.
+ */
 let masterKey = '';
 
 /** Whether a refusal was the lock rather than a fault. */
@@ -3275,6 +3286,10 @@ window.addEventListener('beforeunload', (e) => {
 });
 
 /* ---------------- wiring ---------------- */
+
+if ($('master')) {
+  $('master').addEventListener('input', () => { masterKey = $('master').value.trim(); });
+}
 
 $('begin').addEventListener('click', () => {
   // Whatever is typed here ends up in a file somebody else reads later, so
