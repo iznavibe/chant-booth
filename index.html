@@ -475,9 +475,26 @@
                style="text-align:center;border-radius:999px;padding:12px 22px;
                       border:1px solid var(--edge);font-family:var(--display);
                       font-weight:600;cursor:pointer">
-          Upload a clip
+          Upload a clip for this block
           <input id="guide-file" type="file" accept="audio/*,video/*" hidden>
         </label>
+      </div>
+
+      <div class="card" id="clip" hidden
+           style="display:flex;flex-direction:column;gap:10px;text-align:left">
+        <p class="muted" id="clip-what"></p>
+        <div class="nav">
+          <button class="ghost icon" id="clip-back" title="Start 0.1s earlier">-0.1</button>
+          <span class="ghost grow" id="clip-at"
+                style="display:flex;align-items:center;justify-content:center;
+                       border:1px solid var(--edge);border-radius:999px;
+                       font-family:var(--display);font-weight:600"></span>
+          <button class="ghost icon" id="clip-fwd" title="Start 0.1s later">+0.1</button>
+        </div>
+        <div class="row">
+          <button class="ghost" id="clip-hear">Hear it</button>
+          <button class="primary" id="clip-save">Save as the guide</button>
+        </div>
       </div>
     </div>
 
@@ -1418,34 +1435,90 @@ async function saveGuide(c, blob, mime) {
  * containers as audio quite happily, and re-encoding here would only lose
  * quality for no gain.
  */
+/**
+ * A clip trimmed elsewhere, held here until it lines up.
+ *
+ * Trimming in an editor is the easy half: cutting roughly around a block takes
+ * seconds and you can see the waveform. Landing the first word on the beat is
+ * the fiddly half, and doing it by exporting, uploading and listening is a slow
+ * loop. So the clip is decoded and kept, one control slides it, and what
+ * eventually goes up is a window of exactly the right length.
+ */
+let clip = null;
+
 async function uploadGuide(e) {
   const file = e.target.files && e.target.files[0];
   e.target.value = '';
   if (!file) return;
-  const c = CHANTS[at];
 
-  if (!CAN_UPLOAD) {
-    note('Storage is not set up yet, so guides cannot be saved.');
-    return;
-  }
   if (file.size > 25 * 1024 * 1024) {
-    note('That file is over 25MB. Trim it to just this block and try again.');
+    note('That file is over 25MB. Trim it closer to this block and try again.');
     return;
   }
 
-  setStatus('Uploading the guide…');
+  setStatus(`Reading ${file.name}…`);
   try {
-    await put('guides', `${SONG}/${c.id}`, file, file.type || 'audio/webm', true);
-    const old = guides.get(c.id);
-    if (old) URL.revokeObjectURL(old);
-    guides.set(c.id, URL.createObjectURL(file));
-    setStatus('Guide in. Press Guide to check it.');
-    note(`Saved ${Math.round(file.size / 1024)}KB for block ${at + 1}.`);
+    const Off = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+    const buf = await new Off(1, 1, 44100).decodeAudioData(await file.arrayBuffer());
+    // Centre the block in whatever was handed over, which for a clip trimmed
+    // roughly around it is usually within a few tenths already.
+    const b = CHANTS[at];
+    const slack = Math.max(0, buf.duration - guideLength(b));
+    clip = { buf, name: file.name, from: Math.min(slack / 2, PRE) };
+    showClip();
+    setStatus('Slide it until the first word lands on time.');
   } catch (err) {
-    setStatus('That did not upload.');
-    note('The guide did not upload: ' + err.message);
+    setStatus('That file could not be read.');
+    note('An mp3, m4a or mp4 exported from your editor works best.');
   }
 }
+
+function showClip() {
+  const b = CHANTS[at];
+  if (!clip) { $('clip').hidden = true; return; }
+  $('clip').hidden = false;
+  $('clip-what').textContent =
+    `${clip.name}, ${clip.buf.duration.toFixed(1)}s, taking ${guideLength(b).toFixed(1)}s of it`;
+  $('clip-at').textContent = `starts at ${clip.from.toFixed(2)}s`;
+}
+
+function nudgeClip(by) {
+  if (!clip) return;
+  clip.from = Math.max(-PRE, Math.min(clip.buf.duration, clip.from + by));
+  showClip();
+}
+
+$('clip-back').addEventListener('click', () => nudgeClip(-0.1));
+$('clip-fwd').addEventListener('click', () => nudgeClip(0.1));
+
+$('clip-hear').addEventListener('click', async () => {
+  if (!clip || busy) return;
+  const b = CHANTS[at];
+  (await prepare(sliceToWav(clip.buf, clip.from, guideLength(b)))).start();
+  sweep(b, () => {});
+});
+
+$('clip-save').addEventListener('click', async () => {
+  if (!clip) return;
+  if (!CAN_UPLOAD) { note('Storage is not set up yet, so guides cannot be saved.'); return; }
+  const b = CHANTS[at];
+  $('clip-save').disabled = true;
+  setStatus('Saving the guide…');
+  try {
+    const wav = sliceToWav(clip.buf, clip.from, guideLength(b));
+    await put('guides', `${SONG}/${b.id}`, wav, 'audio/wav', true);
+    const old = guides.get(b.id);
+    if (old) URL.revokeObjectURL(old);
+    guides.set(b.id, URL.createObjectURL(wav));
+    clip = null;
+    $('clip').hidden = true;
+    setStatus('Guide saved. Press Guide to hear it as a fan will.');
+    note(`Block ${at + 1} done, ${Math.round(wav.size / 1024)}KB.`);
+  } catch (err) {
+    note('The guide did not upload: ' + err.message);
+  }
+  $('clip-save').disabled = false;
+});
 
 /* ---------------- cutting guides out of one file ---------------- */
 
@@ -1459,16 +1532,21 @@ async function uploadGuide(e) {
  */
 let wholeSong = null;
 
-/** A slice of a decoded buffer as a mono WAV, which every browser can make. */
-function sliceToWav(buf, from, to) {
+/**
+ * A window of a decoded buffer as a mono WAV, always exactly `length` seconds.
+ *
+ * Anything falling outside the source comes back as silence rather than a
+ * shorter file. A block one second into the song wants a second of lead that
+ * does not exist yet, and a clip trimmed a little short must not shift every
+ * word in it forward: the guide has to be the same length as the sweep it plays
+ * under, whatever it was cut from.
+ */
+function sliceToWav(buf, from, length) {
   const rate = 32000; // plenty for a guide, and a third the size of 48k
-  const start = Math.max(0, Math.floor(from * buf.sampleRate));
-  const end = Math.min(buf.length, Math.ceil(to * buf.sampleRate));
   const src = buf.getChannelData(0);
   const src2 = buf.numberOfChannels > 1 ? buf.getChannelData(1) : null;
 
-  const count = Math.max(1, Math.round(((end - start) / buf.sampleRate) * rate));
-  const step = (end - start) / count;
+  const count = Math.max(1, Math.round(length * rate));
   const bytes = new ArrayBuffer(44 + count * 2);
   const view = new DataView(bytes);
   const tag = (at, str) => [...str].forEach((ch, i) => view.setUint8(at + i, ch.charCodeAt(0)));
@@ -1487,20 +1565,25 @@ function sliceToWav(buf, from, to) {
   view.setUint32(40, count * 2, true);
 
   for (let i = 0; i < count; i += 1) {
-    const at = start + Math.floor(i * step);
-    // Both channels folded together, since a guide is played to one ear or two
-    // and either way wants everything that was in the mix.
-    let v = src[at] || 0;
-    if (src2) v = (v + (src2[at] || 0)) / 2;
+    const at = Math.floor((from + i / rate) * buf.sampleRate);
+    let v = 0;
+    if (at >= 0 && at < buf.length) {
+      // Both channels folded together, since a guide is played to one ear or
+      // two and either way wants everything that was in the mix.
+      v = src[at] || 0;
+      if (src2) v = (v + (src2[at] || 0)) / 2;
+    }
     view.setInt16(44 + i * 2, Math.max(-1, Math.min(1, v)) * 32767, true);
   }
   return new Blob([bytes], { type: 'audio/wav' });
 }
 
-/** Where a block's guide begins and ends, matching how a take is shaped. */
-function guideWindow(b) {
-  const nudge = parseFloat($('slice-offset').value) || 0;
-  return [b.at - PRE + nudge, b.at + b.dur + TAIL + nudge];
+/** How long a guide runs: the block, with a take's lead-in and tail. */
+const guideLength = (b) => PRE + b.dur + TAIL;
+
+/** Where in the whole song a block's guide starts. */
+function songStart(b) {
+  return b.at - PRE + (parseFloat($('slice-offset').value) || 0);
 }
 
 $('slice-file').addEventListener('change', async (e) => {
@@ -1534,9 +1617,9 @@ $('slice-file').addEventListener('change', async (e) => {
 
 $('slice-try').addEventListener('click', async () => {
   if (!wholeSong) return;
-  const [from, to] = guideWindow(CHANTS[at]);
-  (await prepare(sliceToWav(wholeSong, from, to))).start();
-  sweep(CHANTS[at], () => {});
+  const b = CHANTS[at];
+  (await prepare(sliceToWav(wholeSong, songStart(b), guideLength(b)))).start();
+  sweep(b, () => {});
 });
 
 $('slice-go').addEventListener('click', async () => {
@@ -1546,9 +1629,8 @@ $('slice-go').addEventListener('click', async () => {
   let why = '';
   for (const b of CHANTS) {
     $('slice-note').textContent = `Cutting and sending ${done + 1} of ${CHANTS.length}…`;
-    const [from, to] = guideWindow(b);
     try {
-      const wav = sliceToWav(wholeSong, from, to);
+      const wav = sliceToWav(wholeSong, songStart(b), guideLength(b));
       await put('guides', `${SONG}/${b.id}`, wav, 'audio/wav', true);
       const old = guides.get(b.id);
       if (old) URL.revokeObjectURL(old);
@@ -1582,6 +1664,7 @@ function show(which) {
 function goto(i) {
   if (busy) return;
   stopPlaying();
+  if (i !== at) { clip = null; $('clip').hidden = true; }
   at = Math.max(0, Math.min(CHANTS.length - 1, i));
   const c = CHANTS[at];
   paintChant(c);

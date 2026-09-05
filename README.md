@@ -250,9 +250,20 @@ Each slice runs from one second before the block's first word to 1.5 seconds
 after its last, the same shape a take has, so guide and sweep line up. They come
 out as 32kHz mono WAV, around 10MB for a song.
 
-The per-block "Upload a clip" is still there for anything that needs its own
-treatment, and Record guide still records one by voice. All three write to the
-same place, so they mix freely.
+**Or trim them yourself and line them up here.** Cutting roughly around a block
+in an editor takes seconds and you can see the waveform; landing the first word
+on the beat is the fiddly part, and doing that by exporting, uploading and
+listening is a slow loop. So "Upload a clip for this block" decodes what you
+give it and holds it: `-0.1` and `+0.1` slide it, "Hear it" plays it under the
+sweep, and Save writes a window of exactly the right length. Rough trimming plus
+a couple of taps beats trying to cut frame-accurately in the editor.
+
+An mp3 out of CapCut is ideal. It need not be exact, or even long enough: a clip
+shorter than the block is padded with silence rather than truncated, because a
+guide that is short would shift every word in it forward.
+
+Record guide still records one by voice. All three routes write to the same
+place, so they mix freely.
 
 Guides are stored with no file extension. What arrives may be webm, mp4 or wav
 depending on where it came from, the page reads the bytes rather than the name,
