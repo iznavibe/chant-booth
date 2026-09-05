@@ -65,6 +65,12 @@ const NAMES = [
   [/이[.\-·!]즈[.\-·!]나/g, '이즈나'],
   [/i[.\-·!]z[.\-·!]na[.\-·!]ya/gi, 'iznaya'],
   [/i[.\-·!]z[.\-·!]na/gi, 'izna'],
+  // A dash inside a member's name is the sweep stepping through it, not a held
+  // note, so 코-코 is 코코. Elsewhere a dash is length and is left alone.
+  [/마[-·]이/g, '마이'],
+  [/코[-·]코/g, '코코'],
+  [/Ma[-·]i/gi, 'Mai'],
+  [/Ko[-·]ko/gi, 'Koko'],
 ];
 
 /**
@@ -391,7 +397,12 @@ for (const idx of blocks.values()) {
      * capped at however many syllables that romaji has so a loose timing cannot
      * drag in the syllable after it.
      */
-    const midWord = (a2, b2) => /[A-Za-z]$/.test(a2.text) && /^[A-Za-z]/.test(b2.text);
+    // Hangul only where the two rows are cut alike. Where they are not, the
+    // romaji is the better guide to where the words are, and following letters
+    // instead would run 하늘 and 위로 together.
+    const letter = even ? /[A-Za-z가-힣]/ : /[A-Za-z]/;
+    const midWord = (a2, b2) =>
+      letter.test(a2.text.slice(-1)) && letter.test(b2.text[0] || '');
 
     const groups = [];
     src.forEach((u, n) => {
@@ -402,7 +413,16 @@ for (const idx of blocks.values()) {
         && owner[n] === owner[prev.at]
         && prev.units.length < room;
       const joined = prev && midWord(prev.units[prev.units.length - 1], u);
-      if (prev && (sameRomaji || joined) && rowOf(u) === rowOf(src[prev.at])) {
+      /*
+       * Never across the edge of a chant.
+       *
+       * The crowd answers the last syllable of a line: izna sing 내 마음이 and
+       * the answer is the 이 alone. Joining that syllable to the word in front
+       * of it would hand the fan the whole word to shout, which is not the
+       * chant. A word split by the sweep always shares one flag.
+       */
+      const sameFlag = prev && !!mine[n] === !!mine[prev.at + prev.units.length - 1];
+      if (prev && sameFlag && (sameRomaji || joined) && rowOf(u) === rowOf(src[prev.at])) {
         prev.units.push(u);
       } else {
         groups.push({ at: n, units: [u] });

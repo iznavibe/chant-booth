@@ -25,21 +25,21 @@
    "name": "izna",
    "title": "IZNA",
    "blocks": 15,
-   "shouts": 110,
+   "shouts": 98,
    "minutes": 2.8
   },
   {
    "name": "mammamia",
    "title": "Mamma Mia",
    "blocks": 16,
-   "shouts": 51,
+   "shouts": 48,
    "minutes": 2.3
   },
   {
    "name": "metronome",
    "title": "METRONOME",
    "blocks": 14,
-   "shouts": 48,
+   "shouts": 46,
    "minutes": 2.7
   },
   {
@@ -60,7 +60,7 @@
    "name": "sign",
    "title": "SIGN",
    "blocks": 12,
-   "shouts": 57,
+   "shouts": 54,
    "minutes": 2.5
   },
   {
