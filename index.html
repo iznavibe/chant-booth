@@ -688,14 +688,12 @@ const $ = (id) => document.getElementById(id);
 
 const EN = {
   pick: 'Pick a song',
-  about: "This is a fanchant project. izna's songs are here block by block, and "
-    + 'nayas record the shouts one at a time. Every voice sent in is edited '
-    + 'together into one crowd for the finished video.',
+  about: "This is a fanchant project of izna's songs.",
   before: 'Before you start',
   s1: 'Somewhere quiet. Hold the phone near your mouth.',
   s2: 'Press Guide to hear it, then Record and sing along.',
   s3: 'Redo anything as many times as you like.',
-  s4: 'After you finish, upload your takes.',
+  s4: 'When you are done, press Upload my takes.',
   handle: 'Username (optional)',
   begin: 'iznaya',
   consent: 'By taking part, you agree to your voice being used in a public '
@@ -771,14 +769,12 @@ const EN = {
 
 const KO = {
   pick: '곡 고르기',
-  about: '나야들의 목소리로 이즈나 응원법 영상을 만드는 프로젝트예요. '
-    + '노래를 구간별로 나눠 뒀으니 한 구간씩 함성을 녹음해 주세요. '
-    + '보내주신 목소리는 하나의 함성으로 합쳐져 영상에 들어가요.',
+  about: '이즈나 노래 응원법 프로젝트예요.',
   before: '시작하기 전에',
   s1: '조용한 곳에서 휴대폰을 입 가까이 대주세요.',
   s2: '가이드를 눌러 들어보고, 녹음을 눌러 따라 외쳐주세요.',
   s3: '몇 번이든 다시 녹음할 수 있어요.',
-  s4: '다 하고 나면 녹음을 올려주세요.',
+  s4: '다 녹음하고 나면 마지막에 ‘녹음 보내기’를 눌러주세요.',
   handle: '닉네임 (선택)',
   begin: '이즈나야',
   consent: '참여하시면 목소리가 공개되는 응원법 영상에 쓰이는 데 동의하시는 것으로 봅니다. '
@@ -793,7 +789,7 @@ const KO = {
   backToTakes: '내 녹음으로 돌아가기',
   yourTakes: '내 녹음',
   tapAny: '눌러서 들어보거나 다시 녹음할 수 있어요.',
-  upload: '녹음 올리기',
+  upload: '녹음 보내기',
   sheetPlay: '▶ 들어보기',
   notRecorded: '아직 녹음 전',
   again: '다시 녹음',
@@ -851,14 +847,12 @@ const KO = {
 };
 const JA = {
   pick: '曲を選ぶ',
-  about: 'ナヤの声でiznaのファンチャント映像をつくるプロジェクトです。'
-    + '曲をブロックごとに分けてあるので、一つずつ録音してください。'
-    + '集まった声はひとつの歓声にまとめて映像に入ります。',
+  about: 'iznaの曲のファンチャントプロジェクトです。',
   before: 'はじめる前に',
   s1: '静かな場所で、スマホを口の近くに持ってください。',
   s2: 'ガイドを押して聞いてから、録音を押して一緒に叫んでください。',
   s3: '何度でも録り直せます。',
-  s4: '終わったら録音をアップロードしてください。',
+  s4: '全部録音したら、最後に「録音を送る」を押してください。',
   handle: 'ユーザーネーム（任意）',
   begin: 'イズナヤ',
   consent: '参加すると、声が公開のファンチャント映像に使われることに同意したものとみなされます。'
@@ -873,7 +867,7 @@ const JA = {
   backToTakes: '録音一覧に戻る',
   yourTakes: '録音一覧',
   tapAny: 'タップすると聞き直しも録り直しもできます。',
-  upload: '録音をアップロード',
+  upload: '録音を送る',
   sheetPlay: '▶ 聞く',
   notRecorded: '未録音',
   again: '録り直す',
@@ -2628,10 +2622,6 @@ $('title').addEventListener('click', () => { if (!busy) showPicker(); });
   if (who) { handle = who; $('handle').value = who; }
 
   if (GUIDE) {
-    $('lede').hidden = false;
-    $('lede').textContent =
-      'Record or upload a guide for each block, so every naya knows what they are ' +
-      'copying. These are saved as the guide track, not as a crowd take.';
     $('btn-record').textContent = t('recordGuide');
     $('guide-file').addEventListener('change', uploadGuide);
   }
