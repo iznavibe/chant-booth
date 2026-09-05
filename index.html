@@ -1230,6 +1230,43 @@ function audio() {
   return ac;
 }
 
+/*
+ * How far ahead of now anything is scheduled.
+ *
+ * Asking for a sound at exactly now asks for one in the past by the time the
+ * request arrives, and a phone answers that by starting partway in. A twelfth
+ * of a second is under the threshold of noticing and is longer than the gap
+ * ever is. Whatever waits on the sound waits the same, so the two stay level.
+ */
+const AHEAD = 0.08;
+
+/**
+ * Wake the sound before anything is scheduled against its clock.
+ *
+ * A phone starts the audio asleep and only a gesture may wake it, and waking
+ * is not instant. While it sleeps its clock stands still, so a guide scheduled
+ * then is scheduled for a moment that has passed by the time it wakes, and it
+ * comes in partway through: the words move while the voice is still catching
+ * up. On a desktop the clock is usually running already, which is why this
+ * only ever went wrong on a phone.
+ */
+async function wake() {
+  const c = audio();
+  if (c.state === 'running') return c;
+  /*
+   * Waited for, but not indefinitely.
+   *
+   * A browser that will not wake the sound yet leaves the promise pending
+   * rather than refusing, so waiting on it alone means a press that does
+   * nothing at all. Better a guide that starts a little late than a button
+   * that never answers.
+   */
+  try {
+    await Promise.race([c.resume(), new Promise((go) => setTimeout(go, 250))]);
+  } catch (e) { /* refused until the next gesture */ }
+  return c;
+}
+
 /** A short wooden click. `accent` marks the downbeat. */
 function click(when, accent) {
   const c = audio();
@@ -1505,7 +1542,11 @@ function sounding(node) {
   return node;
 }
 
+/** Counted so that anything waiting on a timer knows it was called off. */
+let stops = 0;
+
 function stopPlaying() {
+  stops += 1;
   playing.forEach((n) => {
     try { n.stop ? n.stop(0) : n.pause(); } catch (e) { /* already ended */ }
   });
@@ -1946,7 +1987,7 @@ function playWindow(buf, from, len, lead, keep, level) {
   limit.release.value = 0.12;
   node.connect(gain).connect(limit).connect(c.destination);
   if (!keep) stopPlaying();
-  node.start(c.currentTime + (lead || 0), Math.max(0, from), len);
+  node.start(c.currentTime + AHEAD + (lead || 0), Math.max(0, from), len);
   sounding(node);
   return node;
 }
@@ -1967,13 +2008,17 @@ async function listen() {
 
   const where = guideAt[c.id];
   if (where) {
+    // Woken first, so the clock the guide is scheduled against is running, and
+    // again after the file, which may have taken a while to arrive.
+    await wake();
     const buf = await guideBuffer(where.file);
+    await wake();
     if (buf) {
       // A voice guide beats a click: it carries the words, not just the beat.
       setStatus('');
       playWindow(buf, where.from, where.len, where.lead || 0);
-      if (where.hold > 0) setTimeout(() => sweep(c, done), where.hold * 1000);
-      else sweep(c, done);
+      const after = (AHEAD + (where.hold > 0 ? where.hold : 0)) * 1000;
+      setTimeout(() => sweep(c, done), after);
       return;
     }
   }
@@ -2741,21 +2786,25 @@ async function playTake() {
   const take = takes.get(c.id);
   if (!take) return;
 
+  await wake();
   const mine = await prepare(take.blob);
   if (!withGuide()) { mine.start(); showPlaying(true); return; }
 
   const where = guideAt[c.id];
   const buf = where ? await guideBuffer(where.file) : null;
-  const wait = buf && where.hold > 0 ? where.hold : 0;
+  await wake();
+  const wait = (AHEAD + (buf && where.hold > 0 ? where.hold : 0)) * 1000;
   if (buf) playWindow(buf, where.from, where.len, where.lead || 0, false, PLAY_GAIN * GUIDE_UNDER);
 
-  const go = () => {
+  // The take comes in where the sweep did when it was recorded, which is after
+  // whatever run-up the guide has in front of the words.
+  const mark = stops;
+  showPlaying(true);
+  setTimeout(() => {
+    if (stops !== mark) return;      // stopped while the run-up was playing
     mine.start(true);
-    showPlaying(true);
     sweep(c, () => stopPlaying());
-  };
-  if (wait) setTimeout(go, wait * 1000);
-  else go();
+  }, wait);
 }
 
 $('btn-play').addEventListener('click', playTake);
