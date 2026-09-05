@@ -260,19 +260,48 @@ for (const idx of blocks.values()) {
   const end = Math.max(...raw.map((l) => l.src[l.src.length - 1].end));
 
   const lines = raw.map(({ i, src, mine }) => {
-    let ro = (p.romaji && p.romaji.lines[i] && p.romaji.lines[i].syllables) || [];
+    const roRaw = (p.romaji && p.romaji.lines[i] && p.romaji.lines[i].syllables) || [];
     /*
-     * The rows pair unit for unit or not at all.
+     * The rows are paired by time, not by position.
      *
-     * A romaji row cut into a different number of pieces than the line it reads
-     * cannot be lined up by position, and pairing them anyway puts a romanised
-     * word under an unrelated one. Better an empty row than a wrong one, and the
-     * warning says which line to go and split properly.
+     * They are often cut differently: 하늘 위로 is four syllables in the lyric
+     * and two words in its romaji, so lining them up by index puts a word under
+     * the wrong syllable. Both carry timings, so each word takes the romaji that
+     * overlaps it most, and a romaji already spoken for is not repeated under
+     * the syllable after it. Where the cuts do match, position is used, which is
+     * the same answer and cheaper.
      */
-    if (ro.length && ro.length !== src.length) {
-      mismatched.push(`line ${i}: ${src.length} words, ${ro.length} romaji`);
-      ro = [];
+    const even = roRaw.length === src.length;
+    if (roRaw.length && !even) {
+      mismatched.push(`line ${i}: ${src.length} words, ${roRaw.length} romaji`);
     }
+
+    /*
+     * Matched within a row, and forwards within it.
+     *
+     * A chant sung over the top of a line is a second row, stored after the
+     * line it covers but sounding in the middle of it, so array order is not
+     * time order and matching across the two mixes them up. Each row is matched
+     * against its own, and only forwards, since both run in time.
+     */
+    const rowOf = (u) => u.row || 0;
+    const pointers = {};
+    const ro = src.map((s, n) => {
+      if (even) return roRaw[n];
+      const row = rowOf(s);
+      if (pointers[row] === undefined) pointers[row] = 0;
+      let best = -1;
+      let most = 0;
+      roRaw.forEach((r, k) => {
+        if (rowOf(r) !== row || k < pointers[row]) return;
+        const over = Math.min(s.end, r.end) - Math.max(s.start, r.start);
+        if (over > most) { most = over; best = k; }
+      });
+      if (best < 0) return undefined;
+      pointers[row] = best + 1;
+      return roRaw[best];
+    });
+
     return {
       w: bracketCues(joinNames(tidyCommas(src.map((s, j) => ({
         k: strip(s.text).trim(),
@@ -311,7 +340,9 @@ out.forEach((b, i) => {
 });
 console.log(`\nsongs/${name}.json: ${out.length} blocks`);
 if (mismatched.length) {
-  console.log(`
-${mismatched.length} line(s) whose romaji does not pair, shown without it:`);
+  console.log(
+    `
+${mismatched.length} line(s) cut differently from their romaji, matched by time:`
+  );
   mismatched.forEach((m) => console.log('  ' + m));
 }
