@@ -346,10 +346,18 @@ for (const idx of blocks.values()) {
 function assemble(all, first, last) {
   const raw = all.slice(first, last + 1);
 
-  // The window covers the kept run only, so a block that chants at its end does
-  // not open with several silent seconds of somebody else's verse.
-  const start = Math.min(...raw.map((l) => l.src[0].start));
-  const end = Math.max(...raw.map((l) => l.src[l.src.length - 1].end));
+  /*
+   * The window covers the kept run only, so a block that chants at its end does
+   * not open with several silent seconds of somebody else's verse.
+   *
+   * Measured across every unit rather than the first and last of each line. A
+   * chant sung over a line is held after the words it covers but is not sung
+   * after them, and Mamma Mia has one that begins 8ms before the line it opens:
+   * reading the first unit made the block start after its own first word, so
+   * the sweep opened with that word already under way.
+   */
+  const start = Math.min(...raw.flatMap((l) => l.src.map((u) => u.start)));
+  const end = Math.max(...raw.flatMap((l) => l.src.map((u) => u.end)));
 
   /*
    * Lines are shown in the order they happen, not the order they are stored.
@@ -545,6 +553,12 @@ out.forEach((b, i) => { b.id = 'b' + (i + 1); });
  * nine other songs. So they are written down here instead, where the reach of
  * each is exactly one block.
  *
+ *   before  how many whole lines in front of the block to add. DUMB HOT sings
+ *           "I'm loving everything" into "That comes out your mouth (izna)",
+ *           and the answer wants the half of the sentence it answers. Racecar
+ *           block 9 is almost the same shape and wants nothing, which is why
+ *           this is a list and not a rule.
+ *
  *   pickup  how many words off the end of the line before the block to keep in
  *           front of its first line. RIP's "My evil side" is sung straight out
  *           of the line above it with no breath between the two, and the chant
@@ -554,11 +568,17 @@ out.forEach((b, i) => { b.id = 'b' + (i + 1); });
  */
 const BY_HAND = {
   rip: { b2: { pickup: 1 } },
+  dumbhot: { b3: { before: 1 }, b10: { before: 1 }, b11: { before: 1 } },
 };
 
 Object.entries(BY_HAND[name] || {}).forEach(([id, edit]) => {
   const b = out.find((x) => x.id === id);
   if (!b) { console.log('no ' + id + ' to edit'); return; }
+  if (edit.before) {
+    const from = Math.max(0, b.first - edit.before);
+    if (from === b.first) { console.log(id + ': nothing in front to add'); return; }
+    Object.assign(b, assemble(b.all, from, b.last), { first: from });
+  }
   if (edit.pickup) {
     if (!b.first) { console.log(id + ': nothing in front to pick up from'); return; }
     const grown = assemble(b.all, b.first - 1, b.last);
