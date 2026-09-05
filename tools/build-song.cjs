@@ -277,30 +277,31 @@ for (const idx of blocks.values()) {
     }
 
     /*
-     * Matched within a row, and forwards within it.
+     * Every romaji finds a word, rather than every word finding a romaji.
      *
-     * A chant sung over the top of a line is a second row, stored after the
-     * line it covers but sounding in the middle of it, so array order is not
-     * time order and matching across the two mixes them up. Each row is matched
-     * against its own, and only forwards, since both run in time.
+     * The rows are cut independently, and either can be the finer of the two.
+     * 하늘 위로 is four syllables against two romaji words; "최정은 정세비
+     * 이즈나야" is three words against five. Asking each word for its best
+     * romaji quietly drops the extras, which is how "Jeong" and "iznaya!" went
+     * missing. Asking instead where each romaji belongs loses nothing: a word
+     * that draws several keeps them all, and one that draws none is blank.
+     *
+     * Rows are kept apart, since a chant sung over a line is a second row
+     * covering the same seconds as the words underneath it.
      */
     const rowOf = (u) => u.row || 0;
-    const pointers = {};
-    const ro = src.map((s, n) => {
-      if (even) return roRaw[n];
-      const row = rowOf(s);
-      if (pointers[row] === undefined) pointers[row] = 0;
+    const parts = src.map(() => []);
+    roRaw.forEach((r) => {
       let best = -1;
       let most = 0;
-      roRaw.forEach((r, k) => {
-        if (rowOf(r) !== row || k < pointers[row]) return;
+      src.forEach((s, n) => {
+        if (rowOf(s) !== rowOf(r)) return;
         const over = Math.min(s.end, r.end) - Math.max(s.start, r.start);
-        if (over > most) { most = over; best = k; }
+        if (over > most) { most = over; best = n; }
       });
-      if (best < 0) return undefined;
-      pointers[row] = best + 1;
-      return roRaw[best];
+      if (best >= 0) parts[best].push(r.text);
     });
+    const ro = src.map((s, n) => (even ? roRaw[n] : (parts[n].length ? { text: parts[n].join('') } : undefined)));
 
     return {
       w: bracketCues(joinNames(tidyCommas(src.map((s, j) => ({
