@@ -435,7 +435,7 @@
   },
   {
    "at": 61.91,
-   "dur": 1.69,
+   "dur": 2.77,
    "lines": [
     {
      "w": [
@@ -452,6 +452,18 @@
        "r": "Fool me once and I'll let it slip",
        "t": 0,
        "d": 1.68,
+       "c": 0,
+       "s": 0
+      }
+     ]
+    },
+    {
+     "w": [
+      {
+       "k": "Fool me twice and I'm gone",
+       "r": "Fool me twice and I'm gone",
+       "t": 1.68,
+       "d": 1.09,
        "c": 0,
        "s": 0
       }

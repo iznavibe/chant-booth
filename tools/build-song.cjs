@@ -224,6 +224,18 @@ for (const idx of blocks.values()) {
    * runs take more, up to three, on the same reasoning.
    */
   /*
+   * A chant that outlasts its own line drags the block along with it.
+   *
+   * The cue to cheer is one word held for four seconds while izna sing two more
+   * lines underneath. Measuring the block by its lines cut that to the one it
+   * was written on, so the sweep ended while the cheer was still going. The run
+   * reaches forward to whatever the longest chant in it is still covering.
+   */
+  const chantEnd = () => Math.max(...all.slice(first, last + 1)
+    .flatMap((l) => l.src.filter((s, j) => l.mine[j]).map((s) => s.end)));
+  while (last + 1 < all.length && all[last + 1].src[0].start < chantEnd() - 0.05) last += 1;
+
+  /*
    * A line sung at the same time as a chant comes with it.
    *
    * The two are one moment on screen: izna singing and the crowd answering

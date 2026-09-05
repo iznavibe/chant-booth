@@ -22,7 +22,10 @@ writes it: the group's name loses the full stops it is swept through with, so
 함성 and CHEER are directions rather than lyrics and without them they look like
 something to sing.
 
-A block is trimmed to the run from its first chanting line to its last. A single line always takes the one before it,
+A block is trimmed to the run from its first chanting line to its last. A chant held longer than the line it is written on drags the block along with
+it: the cue to cheer is one word over four seconds while izna sing two more lines
+underneath, and measuring the block by its lines alone ended the sweep while the
+cheer was still going. A single line always takes the one before it,
 however long it runs, since one line alone gives nothing to come in off. Leading
 and trailing sung lines are otherwise izna's alone and only crowd a phone screen,
 but a sung line *between* two chants is kept: it is what a fan counts through while
