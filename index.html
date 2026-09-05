@@ -1902,9 +1902,9 @@ function fmt(sec) {
 
 /** m:ss.cc, close enough to scrub to in an editor. */
 function stamp(sec) {
-  const t = Math.max(0, sec);
-  const m = Math.floor(t / 60);
-  const rest = (t - m * 60).toFixed(2).padStart(5, '0');
+  const at = Math.max(0, sec);
+  const m = Math.floor(at / 60);
+  const rest = (at - m * 60).toFixed(2).padStart(5, '0');
   return `${m}:${rest}`;
 }
 
@@ -2820,8 +2820,8 @@ async function uploadAll() {
   }
   $('btn-upload').disabled = true;
   const outstanding = CHANTS.filter((c) => {
-    const t = takes.get(c.id);
-    return t && !uploaded.has(`${c.id}:${t.n}`);
+    const take = takes.get(c.id);
+    return take && !uploaded.has(`${c.id}:${take.n}`);
   });
 
   if (!outstanding.length) {
@@ -2834,12 +2834,13 @@ async function uploadAll() {
   let failed = 0;
   let why = '';
   for (const c of outstanding) {
-    const t = takes.get(c.id);
+    // Never `t`: that is the phrase book, and this loop asks it for a phrase.
+    const take = takes.get(c.id);
     $('upload-note').textContent = t('sending', { n: sent + failed + 1, m: outstanding.length });
     try {
-      await put('takes', `${SONG}/${c.id}/${sessionId}-${t.n}.webm`, t.blob, t.mime);
-      uploaded.add(`${c.id}:${t.n}`);
-      keep(`${SONG}:${c.id}`, { blob: t.blob, mime: t.mime, n: t.n, sent: true });
+      await put('takes', `${SONG}/${c.id}/${sessionId}-${take.n}.webm`, take.blob, take.mime);
+      uploaded.add(`${c.id}:${take.n}`);
+      keep(`${SONG}:${c.id}`, { blob: take.blob, mime: take.mime, n: take.n, sent: true });
       sent += 1;
     } catch (e) {
       failed += 1;
@@ -2952,8 +2953,8 @@ $('done-tabs').addEventListener('click', (e) => {
   if (tab) openSheet(+tab.dataset.i);
 });
 $('sheet-play').addEventListener('click', async () => {
-  const t = takes.get(CHANTS[sheetAt].id);
-  if (t) (await prepare(t.blob)).start();
+  const take = takes.get(CHANTS[sheetAt].id);
+  if (take) (await prepare(take.blob)).start();
 });
 $('sheet-retake').addEventListener('click', () => {
   const i = sheetAt;
