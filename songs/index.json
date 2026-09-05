@@ -18,14 +18,14 @@
    "name": "headache",
    "title": "HEADACHE",
    "blocks": 6,
-   "shouts": 20,
+   "shouts": 23,
    "minutes": 1.1
   },
   {
    "name": "izna",
    "title": "IZNA",
    "blocks": 15,
-   "shouts": 98,
+   "shouts": 97,
    "minutes": 2.7
   },
   {
@@ -39,21 +39,21 @@
    "name": "metronome",
    "title": "METRONOME",
    "blocks": 14,
-   "shouts": 46,
+   "shouts": 70,
    "minutes": 2.7
   },
   {
    "name": "racecar",
    "title": "Racecar",
    "blocks": 13,
-   "shouts": 23,
+   "shouts": 34,
    "minutes": 1.7
   },
   {
    "name": "rip",
    "title": "RIP",
    "blocks": 14,
-   "shouts": 52,
+   "shouts": 53,
    "minutes": 2.5
   },
   {
