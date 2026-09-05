@@ -314,18 +314,35 @@
   .song small { margin-left: auto; color: var(--muted); font-weight: 400; font-size: .8rem; }
   .song { font-size: 1rem; cursor: pointer; }
 
-  /* Hearing a take against the guide, or on its own. */
+  /*
+   * Hearing a take against the guide, or on its own.
+   *
+   * Beside the play button rather than under it, because it is a setting for
+   * that button and nothing else, and a row of its own read as another thing
+   * to do.
+   */
   .playRow {
     display: flex;
     align-items: center;
-    justify-content: center;
-    gap: 9px;
-    font-size: .82rem;
+    gap: 7px;
+    flex: none;
+    max-width: 40%;
+    font-size: .76rem;
+    line-height: 1.2;
     color: var(--muted);
     cursor: pointer;
     user-select: none;
   }
-  .playRow input { accent-color: var(--pink); width: 16px; height: 16px; margin: 0; }
+  .playRow input { accent-color: var(--pink); width: 15px; height: 15px; margin: 0; flex: none; }
+
+  /*
+   * Play and pause, drawn rather than typed.
+   *
+   * The characters for them are emoji on most phones, which arrive in whatever
+   * colour and shape the system feels like and next to nothing like the rest of
+   * the page. These are two shapes in the button's own colour.
+   */
+  .glyph { display: block; margin: 0 auto; }
 
   .legend { font-size: .78rem; color: var(--muted); margin-bottom: 8px; }
   .legend b { color: var(--ink-soft); }
@@ -594,13 +611,13 @@
       </div>
       <div class="nav">
         <button class="ghost icon" id="btn-prev" data-t-aria="prevBlock" aria-label="Previous block">‹</button>
-        <button class="ghost grow" id="btn-play" data-t-aria="playTake" aria-label="Play my take">▶</button>
+        <button class="ghost grow" id="btn-play" aria-label="Play my take"></button>
+        <label class="playRow">
+          <input type="checkbox" id="with-guide" checked>
+          <span data-t="withGuide">with guide</span>
+        </label>
         <button class="ghost icon" id="btn-next" data-t-aria="nextBlock" aria-label="Next block">›</button>
       </div>
-      <label class="playRow">
-        <input type="checkbox" id="with-guide" checked>
-        <span data-t="withGuide">Play back with the guide</span>
-      </label>
       <button class="ghost full" id="btn-done" data-t="myTakes">My takes</button>
     </div>
 
@@ -744,7 +761,7 @@ const EN = {
   prevBlock: 'Previous block',
   nextBlock: 'Next block',
   playTake: 'Play my take',
-  withGuide: 'Play back with the guide',
+  withGuide: 'with guide',
   stopTake: 'Stop',
 
   legend: 'Sing the words in <b>Bold</b>',
@@ -829,7 +846,7 @@ const KO = {
   prevBlock: '이전 구간',
   nextBlock: '다음 구간',
   playTake: '내 녹음 듣기',
-  withGuide: '가이드와 함께 듣기',
+  withGuide: '가이드와 함께',
   stopTake: '정지',
 
   legend: '<b>굵게</b> 표시된 부분을 외쳐주세요',
@@ -912,7 +929,7 @@ const JA = {
   prevBlock: '前のブロック',
   nextBlock: '次のブロック',
   playTake: '録音を再生',
-  withGuide: 'ガイドと一緒に聞く',
+  withGuide: 'ガイドと一緒',
   stopTake: '停止',
 
   legend: '<b>太字</b>のところを叫んでください',
@@ -989,6 +1006,8 @@ function paint() {
   });
   $('flag-ko').setAttribute('aria-pressed', String(LANG === 'ko'));
   $('flag-ja').setAttribute('aria-pressed', String(LANG === 'ja'));
+  // Its own label, since it says what pressing it does rather than what it is.
+  showPlaying(playing.length > 0);
   if (typeof repaintLive === 'function') repaintLive();
 }
 
@@ -1455,6 +1474,16 @@ async function peakOf(blob) {
  */
 const PLAY_GAIN = 2.6;
 
+/*
+ * How far the guide steps back while a take plays over it.
+ *
+ * The guide is a voice recorded close to a phone and the take is another, so
+ * at the same level they sit on top of each other and a fan cannot pick their
+ * own out. The guide is there to say where the words fall, which it still does
+ * from underneath, and the one being judged is the take.
+ */
+const GUIDE_UNDER = 0.4;
+
 /** Songs whose struck words stay unswept, being most of the block. */
 const FLAT_STRIKE = new Set(['metronome', 'izna']);
 
@@ -1484,11 +1513,17 @@ function stopPlaying() {
   showPlaying(false);
 }
 
+const PLAY_GLYPH = '<svg class="glyph" width="13" height="15" viewBox="0 0 13 15" '
+  + 'aria-hidden="true"><path d="M1 1 L12 7.5 L1 14 Z" fill="currentColor"/></svg>';
+const PAUSE_GLYPH = '<svg class="glyph" width="13" height="15" viewBox="0 0 13 15" '
+  + 'aria-hidden="true"><rect x="1.5" y="1" width="3.5" height="13" fill="currentColor"/>'
+  + '<rect x="8" y="1" width="3.5" height="13" fill="currentColor"/></svg>';
+
 /** The play button says what pressing it will do. */
 function showPlaying(on) {
   const b = $('btn-play');
   if (!b) return;
-  b.textContent = on ? '⏸' : '▶';
+  b.innerHTML = on ? PAUSE_GLYPH : PLAY_GLYPH;
   b.setAttribute('aria-label', t(on ? 'stopTake' : 'playTake'));
 }
 
@@ -1898,12 +1933,12 @@ async function loadGuideMap() {
  * put. Whatever the file holds before the mark is never played, so a clip with
  * an intro in front of the fanchant needs no trimming at all.
  */
-function playWindow(buf, from, len, lead, keep) {
+function playWindow(buf, from, len, lead, keep, level) {
   const c = audio();
   const node = c.createBufferSource();
   node.buffer = buf;
   const gain = c.createGain();
-  gain.gain.value = PLAY_GAIN;
+  gain.gain.value = level === undefined ? PLAY_GAIN : level;
   const limit = c.createDynamicsCompressor();
   limit.threshold.value = -6;
   limit.ratio.value = 12;
@@ -2712,7 +2747,7 @@ async function playTake() {
   const where = guideAt[c.id];
   const buf = where ? await guideBuffer(where.file) : null;
   const wait = buf && where.hold > 0 ? where.hold : 0;
-  if (buf) playWindow(buf, where.from, where.len, where.lead || 0);
+  if (buf) playWindow(buf, where.from, where.len, where.lead || 0, false, PLAY_GAIN * GUIDE_UNDER);
 
   const go = () => {
     mine.start(true);
