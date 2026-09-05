@@ -121,6 +121,53 @@
   .muted { color: var(--muted); font-size: .88rem; }
   .soft { color: var(--ink-soft); font-size: .92rem; }
 
+  /*
+   * The two flags, and English as the way back.
+   *
+   * A flag is lit when the page is in its language, so the lit one is both the
+   * state and the switch: pressing it again turns it off and the page is
+   * English, which is what "off" has to mean when there is no third flag. Dim
+   * rather than hidden when off, so it reads as a choice not yet made.
+   */
+  .headrow { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+  .flags { display: flex; gap: 6px; flex: none; }
+  .flag {
+    border: 1px solid var(--edge);
+    background: var(--card);
+    border-radius: 12px;
+    padding: 5px 8px;
+    font-size: 1.1rem;
+    line-height: 1;
+    cursor: pointer;
+    opacity: .45;
+    filter: saturate(.25);
+    transition: opacity .15s, filter .15s, border-color .15s, box-shadow .15s;
+  }
+  .flag:hover { opacity: .8; }
+  .flag[aria-pressed="true"] {
+    opacity: 1;
+    filter: none;
+    border-color: var(--pink);
+    box-shadow: 0 0 0 3px var(--pink-wash);
+  }
+  .flag:focus-visible { outline: 2px solid var(--pink); outline-offset: 2px; }
+  @media (prefers-reduced-motion: reduce) { .flag { transition: none; } }
+
+  /* The one thing on the home screen that is a condition, not an instruction. */
+  .caution {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    background: var(--pink-wash);
+    border: 1px solid var(--pink);
+    border-radius: 14px;
+    padding: 12px 14px;
+    color: var(--ink);
+    font-size: .88rem;
+    line-height: 1.5;
+  }
+  .caution b { font-family: var(--display); }
+
   button {
     font-size: 1rem;
     font-weight: 600;
@@ -414,34 +461,51 @@
 
 <div class="wrap">
   <header>
-    <p class="eyebrow" id="eyebrow">izna</p>
-    <h1 id="title">VibeChant</h1>
+    <div class="headrow">
+      <div>
+        <p class="eyebrow" id="eyebrow">izna</p>
+        <h1 id="title">VibeChant</h1>
+      </div>
+      <div class="flags">
+        <button class="flag" id="flag-ko" type="button" aria-pressed="false"
+                aria-label="한국어">&#127472;&#127479;</button>
+        <button class="flag" id="flag-ja" type="button" aria-pressed="false"
+                aria-label="日本語">&#127471;&#127477;</button>
+      </div>
+    </div>
     <p class="soft" id="lede" hidden></p>
   </header>
 
   <section id="screen-pick" hidden>
     <div class="card" style="display:flex;flex-direction:column;gap:14px">
-      <h2>Pick a song</h2>
+      <h2 data-t="pick">Pick a song</h2>
       <div class="songs" id="song-list"></div>
     </div>
   </section>
 
   <section id="screen-intro" hidden>
     <div class="card" style="display:flex;flex-direction:column;gap:14px">
-      <h2>Before you start</h2>
+      <p class="soft" data-t="about">
+        This is a fanchant project. izna's songs are here block by block, and
+        nayas record the shouts one at a time. Every voice sent in is edited
+        together into one crowd for the finished video.
+      </p>
+      <h2 data-t="before">Before you start</h2>
       <ol class="steps">
-        <li>Somewhere quiet. Hold the phone near your mouth.</li>
-        <li>Press Guide to hear it, then Record and sing along.</li>
-        <li>Redo anything as many times as you like.</li>
+        <li data-t="s1">Somewhere quiet. Hold the phone near your mouth.</li>
+        <li data-t="s2">Press Guide to hear it, then Record and sing along.</li>
+        <li data-t="s3">Redo anything as many times as you like.</li>
+        <li data-t="s4">After you finish, upload your takes.</li>
       </ol>
       <div>
-        <label for="handle" class="muted">Your name for the credits (optional)</label>
+        <label for="handle" class="muted" data-t="handle">Username (optional)</label>
         <input id="handle" type="text" placeholder="@yourhandle" maxlength="40" autocomplete="off">
       </div>
-      <button class="primary full" id="begin">Let's go</button>
-      <p class="muted">
-        By taking part, you agree to your voice being used in a public fanchant
-        video. All recordings are deleted once the project is finished.
+      <button class="primary full" id="begin" data-t="begin">iznaya</button>
+      <p class="caution">
+        <b aria-hidden="true">!</b>
+        <span data-t="consent">By taking part, you agree to your voice being used in a
+        public fanchant video. All recordings are deleted once the project is finished.</span>
       </p>
     </div>
   </section>
@@ -490,27 +554,27 @@
     <div class="pips" id="pips"></div>
 
     <div class="stage" id="stage" style="margin-top:14px">
-      <p class="legend" id="legend">Sing the words in <b>Bold</b></p>
+      <p class="legend" id="legend"></p>
       <span class="badge" id="chant-badge"></span>
       <div class="block" id="block"></div>
       <div class="lead" id="lead"><b id="lead-bar"></b></div>
       <div class="meter"><i id="meter-fill"></i></div>
       <div class="level" id="level" hidden><i id="level-bar"></i></div>
-      <p class="status" id="status">Listen first, then record.</p>
+      <p class="status" id="status"></p>
       <p class="countdown" id="countdown"></p>
     </div>
 
     <div style="display:flex;flex-direction:column;gap:10px;margin-top:14px">
       <div class="row">
-        <button class="ghost" id="btn-listen">Guide</button>
-        <button class="primary" id="btn-record">Record</button>
+        <button class="ghost" id="btn-listen" data-t="guide">Guide</button>
+        <button class="primary" id="btn-record" data-t="record">Record</button>
       </div>
       <div class="nav">
-        <button class="ghost icon" id="btn-prev" aria-label="Previous block">‹</button>
-        <button class="ghost grow" id="btn-play" aria-label="Play my take">▶</button>
-        <button class="ghost icon" id="btn-next" aria-label="Next block">›</button>
+        <button class="ghost icon" id="btn-prev" data-t-aria="prevBlock" aria-label="Previous block">‹</button>
+        <button class="ghost grow" id="btn-play" data-t-aria="playTake" aria-label="Play my take">▶</button>
+        <button class="ghost icon" id="btn-next" data-t-aria="nextBlock" aria-label="Next block">›</button>
       </div>
-      <button class="ghost full" id="btn-done">My takes</button>
+      <button class="ghost full" id="btn-done" data-t="myTakes">My takes</button>
     </div>
 
     <p class="note" id="save-note" hidden></p>
@@ -518,11 +582,11 @@
 
   <section id="screen-done" hidden>
     <div class="card" style="display:flex;flex-direction:column;gap:16px">
-      <h2 id="done-title">Your takes</h2>
+      <h2 id="done-title" data-t="yourTakes">Your takes</h2>
       <div class="tally"><b id="tally-n">0</b><span class="muted" id="tally-label"></span></div>
       <div class="tabs" id="done-tabs"></div>
-      <p class="muted">Tap any one to hear it back or record it again.</p>
-      <button class="primary full" id="btn-upload">Upload my takes</button>
+      <p class="muted" data-t="tapAny">Tap any one to hear it back or record it again.</p>
+      <button class="primary full" id="btn-upload" data-t="upload">Upload my takes</button>
       <p class="muted" id="upload-note"></p>
     </div>
   </section>
@@ -532,10 +596,10 @@
       <p class="eyebrow" id="sheet-no"></p>
       <p class="sheet-text" id="sheet-text"></p>
       <div class="row">
-        <button class="ghost" id="sheet-play">▶ Listen</button>
-        <button class="primary" id="sheet-retake">Record again</button>
+        <button class="ghost" id="sheet-play" data-t="sheetPlay">▶ Listen</button>
+        <button class="primary" id="sheet-retake" data-t="again">Record again</button>
       </div>
-      <button class="ghost full" id="sheet-close">Close</button>
+      <button class="ghost full" id="sheet-close" data-t="close">Close</button>
     </div>
   </div>
 </div>
@@ -603,6 +667,303 @@ const PRE = 1.0;
 const TAIL = 0.8;
 
 const $ = (id) => document.getElementById(id);
+
+/* ------------------------------------------------------------------
+ * Korean and Japanese, with English underneath.
+ *
+ * The site is for izna's fans, who are mostly not reading English by choice.
+ * A flag is lit when the page is in its language, and pressing the lit one
+ * puts it back to English: with only two flags, "off" has to mean English, and
+ * making English a third flag would say it is the one to pick.
+ *
+ * The lyrics themselves are never touched. A block already carries the words
+ * in the original and in romaji, and that is what a fan reads off; translating
+ * a chant would hand them something other than what they are meant to shout.
+ * The guide panel is not here either, being a tool for one person who reads
+ * English.
+ *
+ * Anything missing from a table falls through to English rather than
+ * disappearing, so a half-written translation is still a usable page.
+ * ------------------------------------------------------------------ */
+
+const EN = {
+  pick: 'Pick a song',
+  about: "This is a fanchant project. izna's songs are here block by block, and "
+    + 'nayas record the shouts one at a time. Every voice sent in is edited '
+    + 'together into one crowd for the finished video.',
+  before: 'Before you start',
+  s1: 'Somewhere quiet. Hold the phone near your mouth.',
+  s2: 'Press Guide to hear it, then Record and sing along.',
+  s3: 'Redo anything as many times as you like.',
+  s4: 'After you finish, upload your takes.',
+  handle: 'Username (optional)',
+  begin: 'iznaya',
+  consent: 'By taking part, you agree to your voice being used in a public '
+    + 'fanchant video. All recordings are deleted once the project is finished.',
+
+  guide: 'Guide',
+  record: 'Record',
+  recordGuide: 'Record guide',
+  redo: 'Redo',
+  redoGuide: 'Redo guide',
+  myTakes: 'My takes',
+  backToTakes: 'Back to my takes',
+  yourTakes: 'Your takes',
+  tapAny: 'Tap any one to hear it back or record it again.',
+  upload: 'Upload my takes',
+  sheetPlay: '▶ Listen',
+  again: 'Record again',
+  close: 'Close',
+  prevBlock: 'Previous block',
+  nextBlock: 'Next block',
+  playTake: 'Play my take',
+
+  legend: 'Sing the words in <b>Bold</b>',
+  legendStruck: 'Sing the words in <b>Bold</b>. Crossed out is izna underneath you.',
+  firstListen: 'Listen first, then record.',
+  guideFirst: 'Guide first, then record.',
+  recorded: 'Recorded. Play it back, or redo it.',
+  shout: 'Shout!',
+  noGuide: 'No voice guide yet. Follow the words.',
+  allowMic: 'Allow the mic to start…',
+  getReady: 'Get ready…',
+  ready: 'Ready…',
+  gotIt: 'Got it. Have a listen.',
+  noRecorder: 'This browser cannot record. Try Chrome, or Safari on iPhone.',
+  cameBackEmpty: 'That came back empty.',
+  lostThatOne: 'Lost that one. Tap Record to go again.',
+  cameOutSilent: 'That came out silent.',
+
+  emptyNote: 'The recording had nothing in it. Close other apps using the mic, reload '
+    + 'the page, and allow the microphone when asked.',
+  rawNote: 'This phone would not record through the processing, so it is switched '
+    + 'off. Takes will be a little quieter, which is fine, and this one needs '
+    + 'doing again.',
+  silentNote: 'Nothing reached the recording. Check nothing else is holding the mic, '
+    + 'and try once more.',
+  quietNote: 'That one came out quiet. Have a listen, and try closer to the phone if '
+    + 'it is hard to hear.',
+
+  ofRecorded: 'of {m} recorded',
+  blockOf: 'Block {n} of {m}',
+  nOfM: '{n} of {m}',
+  nothingYet: 'Nothing recorded yet.',
+  allSent: 'All {n} already sent. Thank you!',
+  sending: 'Sending {n} of {m}…',
+  sentThanks: 'Sent. Thank you!',
+  noSongList: 'Could not load the song list.',
+  noSong: 'Could not load that song.',
+
+  micBlocked: 'The browser blocked the mic. Tap the padlock in the address bar, allow the '
+    + 'microphone, then reload.',
+  micNone: 'No microphone found on this device.',
+  micBusy: 'Another app is using the mic. Close it and try again.',
+  micSettings: 'This mic did not accept the settings. Try another one.',
+  micRefused: 'The browser refused mic access on this page.',
+  micStopped: 'The mic stopped before it started. Try again.',
+  micFailed: 'The mic could not start.',
+  noUpload: 'Uploading is not set up yet, so these takes live only on this phone.',
+  allSentN: 'All {n} sent. Thank you!',
+  cannotRecord: 'This browser cannot record audio. Open the link in Chrome, or in '
+    + 'Safari on iPhone.',
+};
+
+const KO = {
+  pick: '곡 고르기',
+  about: '이즈나 팬치트 프로젝트예요. 이즈나의 곡을 구간별로 나눠 놓았고, '
+    + '나야들이 한 구간씩 함성을 녹음합니다. 보내주신 목소리는 모두 하나의 '
+    + '함성으로 편집되어 완성된 영상에 들어갑니다.',
+  before: '시작하기 전에',
+  s1: '조용한 곳에서, 휴대폰을 입 가까이 대주세요.',
+  s2: '가이드를 눌러 들어본 뒤, 녹음을 누르고 함께 외쳐주세요.',
+  s3: '몇 번이든 다시 녹음할 수 있어요.',
+  s4: '다 끝내셨다면 녹음을 업로드해 주세요.',
+  handle: '사용자명 (선택)',
+  begin: '이즈나야',
+  consent: '참여하시면 목소리가 공개되는 팬치트 영상에 사용되는 것에 동의하게 됩니다. '
+    + '모든 녹음은 프로젝트가 끝나면 삭제됩니다.',
+
+  guide: '가이드',
+  record: '녹음',
+  recordGuide: '가이드 녹음',
+  redo: '다시',
+  redoGuide: '가이드 다시 녹음',
+  myTakes: '내 녹음',
+  backToTakes: '내 녹음으로',
+  yourTakes: '내 녹음',
+  tapAny: '하나를 눌러 들어보거나 다시 녹음하세요.',
+  upload: '녹음 업로드하기',
+  sheetPlay: '▶ 들어보기',
+  again: '다시 녹음',
+  close: '닫기',
+  prevBlock: '이전 구간',
+  nextBlock: '다음 구간',
+  playTake: '내 녹음 듣기',
+
+  legend: '<b>굵게</b> 표시된 부분을 외쳐주세요',
+  legendStruck: '<b>굵게</b> 표시된 부분을 외쳐주세요. 취소선 부분은 그 아래에서 이즈나가 부릅니다.',
+  firstListen: '먼저 들어보고, 그다음 녹음하세요.',
+  guideFirst: '가이드를 먼저, 그다음 녹음하세요.',
+  recorded: '녹음 완료. 들어보거나 다시 해보세요.',
+  shout: '외쳐요!',
+  noGuide: '아직 가이드 녹음이 없어요. 가사를 따라가세요.',
+  allowMic: '마이크 권한을 허용해 주세요…',
+  getReady: '준비하세요…',
+  ready: '준비…',
+  gotIt: '녹음됐어요. 들어보세요.',
+  noRecorder: '이 브라우저는 녹음을 지원하지 않아요. Chrome, 또는 아이폰에서는 Safari를 써보세요.',
+  cameBackEmpty: '녹음이 비어 있어요.',
+  lostThatOne: '방금 것을 놓쳤어요. 녹음을 다시 눌러주세요.',
+  cameOutSilent: '소리가 녹히지 않았어요.',
+
+  emptyNote: '녹음에 아무것도 담기지 않았어요. 마이크를 쓰는 다른 앱을 닫고, '
+    + '페이지를 새로고침한 뒤 마이크 권한을 허용해 주세요.',
+  rawNote: '이 휴대폰은 음성 처리를 거치면 녹음되지 않아 처리를 껐어요. 녹음이 조금 '
+    + '작아지지만 괜찮아요. 이번 것만 다시 녹음해 주세요.',
+  silentNote: '녹음에 소리가 들어오지 않았어요. 다른 앱이 마이크를 잡고 있지 않은지 '
+    + '확인하고 다시 시도해 주세요.',
+  quietNote: '소리가 좀 작게 녹혔어요. 들어보시고, 잘 안 들리면 휴대폰을 좀 더 '
+    + '가까이 대고 다시 해보세요.',
+
+  ofRecorded: '/ {m} 구간 녹음됨',
+  blockOf: '{m} 구간 중 {n}번째',
+  nOfM: '{m} 중 {n}',
+  nothingYet: '아직 녹음한 게 없어요.',
+  allSent: '{n}개 모두 보냈어요. 감사합니다!',
+  sending: '{m}개 중 {n}개 보내는 중…',
+  sentThanks: '보냈어요. 감사합니다!',
+  noSongList: '곡 목록을 불러오지 못했어요.',
+  noSong: '그 곡을 불러오지 못했어요.',
+
+  micBlocked: '브라우저가 마이크를 차단했어요. 주소창의 자물쇠를 눌러 마이크를 허용한 뒤 '
+    + '새로고침해 주세요.',
+  micNone: '이 기기에서 마이크를 찾지 못했어요.',
+  micBusy: '다른 앱이 마이크를 쓰고 있어요. 그 앱을 닫고 다시 시도해 주세요.',
+  micSettings: '이 마이크가 설정을 받아들이지 않았어요. 다른 마이크를 써보세요.',
+  micRefused: '이 페이지에서 마이크 접근이 거부됐어요.',
+  micStopped: '마이크가 시작되기 전에 멈췄어요. 다시 시도해 주세요.',
+  micFailed: '마이크를 시작하지 못했어요.',
+  noUpload: '업로드가 아직 설정되지 않아, 이 녹음은 이 휴대폰에만 저장돼요.',
+  allSentN: '{n}개 모두 보냈어요. 감사합니다!',
+  cannotRecord: '이 브라우저는 오디오를 녹음할 수 없어요. Chrome, 또는 아이폰에서는 '
+    + 'Safari로 열어주세요.',
+};
+
+const JA = {
+  pick: '曲を選ぶ',
+  about: 'これはファンチャントのプロジェクトです。iznaの曲をブロックごとに分けてあり、'
+    + 'ナヤが一つずつ叫びを録音します。送られた声はすべて一つの歓声に編集され、'
+    + '完成した映像に入ります。',
+  before: 'はじめる前に',
+  s1: '静かな場所で、スマホを口の近くに持ってください。',
+  s2: 'ガイドを押して聞いてから、録音を押して一緒に叫んでください。',
+  s3: '何度でも録り直せます。',
+  s4: '終わったら録音をアップロードしてください。',
+  handle: 'ユーザーネーム（任意）',
+  begin: 'イズナヤ',
+  consent: '参加すると、あなたの声が公開されるファンチャント映像に使われることに同意したことになります。'
+    + '録音はプロジェクト終了後にすべて削除されます。',
+
+  guide: 'ガイド',
+  record: '録音',
+  recordGuide: 'ガイドを録音',
+  redo: '録り直す',
+  redoGuide: 'ガイドを録り直す',
+  myTakes: '録音一覧',
+  backToTakes: '録音一覧に戻る',
+  yourTakes: '録音一覧',
+  tapAny: 'タップすると聞き直しや録り直しができます。',
+  upload: '録音をアップロード',
+  sheetPlay: '▶ 聞く',
+  again: '録り直す',
+  close: '閉じる',
+  prevBlock: '前のブロック',
+  nextBlock: '次のブロック',
+  playTake: '録音を再生',
+
+  legend: '<b>太字</b>のところを叫んでください',
+  legendStruck: '<b>太字</b>のところを叫んでください。取り消線はその下でiznaが歌っている部分です。',
+  firstListen: 'まず聞いてから録音してください。',
+  guideFirst: 'ガイドを聞いてから録音してください。',
+  recorded: '録音完了。聞き直すか、録り直せます。',
+  shout: '叫んで！',
+  noGuide: 'まだガイド音声がありません。歌詞を追ってください。',
+  allowMic: 'マイクを許可してください…',
+  getReady: '準備して…',
+  ready: '準備…',
+  gotIt: '録れました。聞いてみてください。',
+  noRecorder: 'このブラウザでは録音できません。Chrome、iPhoneならSafariをお試しください。',
+  cameBackEmpty: '録音が空でした。',
+  lostThatOne: '今の録音は失われました。もう一度録音を押してください。',
+  cameOutSilent: '音が入っていませんでした。',
+
+  emptyNote: '録音に何も入っていませんでした。マイクを使う他のアプリを閉じ、'
+    + 'ページを再読み込みして、マイクの許可を出してください。',
+  rawNote: 'この端末では音声処理を通すと録音できなかったため、処理を切りました。'
+    + '録音は少し小さくなりますが問題ありません。この一つだけ録り直してください。',
+  silentNote: '録音に音が届いていません。他のアプリがマイクを使っていないか確かめて、'
+    + 'もう一度お試しください。',
+  quietNote: '少し小さく録れました。聞いてみて、聞き取りにくければ'
+    + 'もう少しスマホを近づけてお試しください。',
+
+  ofRecorded: '/ {m} ブロック録音済み',
+  blockOf: '{m} 中 {n} ブロック目',
+  nOfM: '{m} 中 {n}',
+  nothingYet: 'まだ録音がありません。',
+  allSent: '{n} 件すべて送信済みです。ありがとう！',
+  sending: '{m} 件中 {n} 件を送信中…',
+  sentThanks: '送信しました。ありがとう！',
+  noSongList: '曲リストを読み込めませんでした。',
+  noSong: 'その曲を読み込めませんでした。',
+
+  micBlocked: 'ブラウザがマイクをブロックしました。アドレスバーの鍵マークからマイクを許可して、'
+    + '再読み込みしてください。',
+  micNone: 'この端末にマイクが見つかりません。',
+  micBusy: '他のアプリがマイクを使っています。閉じてからもう一度お試しください。',
+  micSettings: 'このマイクは設定を受け付けませんでした。別のマイクをお試しください。',
+  micRefused: 'このページではマイクへのアクセスが拒否されました。',
+  micStopped: 'マイクが開始前に止まりました。もう一度お試しください。',
+  micFailed: 'マイクを開始できませんでした。',
+  noUpload: 'アップロードがまだ設定されていないため、この録音はこの端末にだけ残ります。',
+  allSentN: '{n} 件すべて送信しました。ありがとう！',
+  cannotRecord: 'このブラウザでは音声を録音できません。Chrome、iPhoneならSafariで開いてください。',
+};
+
+const TABLES = { en: EN, ko: KO, ja: JA };
+let LANG = 'en';
+try { LANG = localStorage.getItem('vibechant.lang') || 'en'; } catch (e) { /* private mode */ }
+if (!TABLES[LANG]) LANG = 'en';
+
+/** A phrase in the current language, with {n} and {m} filled in. */
+function t(key, vals) {
+  const said = (TABLES[LANG] && TABLES[LANG][key]) || EN[key] || '';
+  return vals ? said.replace(/\{(\w+)\}/g, (m, k) => (vals[k] === undefined ? m : vals[k])) : said;
+}
+
+/**
+ * Put the whole page into the current language.
+ *
+ * Everything carrying data-t is written from the table; anything the script
+ * writes for itself asks t() at the time it writes it. Called again on every
+ * switch, so a screen nobody is looking at is already right when it opens.
+ */
+function paint() {
+  document.documentElement.lang = LANG;
+  document.querySelectorAll('[data-t]').forEach((n) => { n.innerHTML = t(n.dataset.t); });
+  document.querySelectorAll('[data-t-aria]').forEach((n) => {
+    n.setAttribute('aria-label', t(n.dataset.tAria));
+  });
+  $('flag-ko').setAttribute('aria-pressed', String(LANG === 'ko'));
+  $('flag-ja').setAttribute('aria-pressed', String(LANG === 'ja'));
+  if (typeof repaintLive === 'function') repaintLive();
+}
+
+function setLang(want) {
+  LANG = LANG === want ? 'en' : want;
+  try { localStorage.setItem('vibechant.lang', LANG); } catch (e) { /* private mode */ }
+  paint();
+}
+
 const screens = {
   pick: $('screen-pick'),
   intro: $('screen-intro'),
@@ -1008,16 +1369,14 @@ function framePolicy() {
 
 async function micTrouble(e) {
   const name = (e && e.name) || 'Error';
-  const say = {
-    NotAllowedError:
-      'The browser blocked the mic. Tap the padlock in the address bar, allow the ' +
-      'microphone, then reload.',
-    NotFoundError: 'No microphone found on this device.',
-    NotReadableError: 'Another app is using the mic. Close it and try again.',
-    OverconstrainedError: 'This mic did not accept the settings. Try another one.',
-    SecurityError: 'The browser refused mic access on this page.',
-    AbortError: 'The mic stopped before it started. Try again.',
-  }[name] || 'The mic could not start.';
+  const say = t({
+    NotAllowedError: 'micBlocked',
+    NotFoundError: 'micNone',
+    NotReadableError: 'micBusy',
+    OverconstrainedError: 'micSettings',
+    SecurityError: 'micRefused',
+    AbortError: 'micStopped',
+  }[name] || 'micFailed');
 
   let state = 'permission unknown';
   try {
@@ -1156,10 +1515,8 @@ function paintChant(b) {
   $('block').querySelectorAll('.w').forEach((n) => flatNodes[+n.dataset.i].push(n));
   clearFill();
 
-  $('chant-badge').textContent = `${at + 1} of ${CHANTS.length}`;
-  $('legend').innerHTML = flatWords.some((w) => w.s)
-    ? 'Sing the words in <b>Bold</b>. Crossed out is izna underneath you.'
-    : 'Sing the words in <b>Bold</b>';
+  $('chant-badge').textContent = t('nOfM', { n: at + 1, m: CHANTS.length });
+  $('legend').innerHTML = flatWords.some((w) => w.s) ? t('legendStruck') : t('legend');
 }
 
 /** Back to unsung, for a block about to be run again. */
@@ -1242,7 +1599,7 @@ function sweep(c, onDone, opts) {
       $('lead').classList.remove('on');
       $('stage').classList.add('go');
       setTimeout(() => $('stage').classList.remove('go'), 500);
-      setStatus('Shout!', true);
+      setStatus(t('shout'), true);
     }
 
     flatWords.forEach((w, i) => {
@@ -1403,7 +1760,7 @@ async function listen() {
   // No guide recorded yet, so the words are the guide. Nothing is played over
   // them: a click on every chant word turned out to be a distraction from the
   // thing it was pointing at.
-  setStatus('No voice guide yet. Follow the words.');
+  setStatus(t('noGuide'));
   sweep(c, done);
 }
 
@@ -1418,7 +1775,7 @@ async function record() {
   let heard = 0;
 
   try {
-    setStatus('Allow the mic to start…');
+    setStatus(t('allowMic'));
     // A suspended context builds a chain that records silence, and phones
     // suspend it whenever the page goes to the background. This click is a
     // real gesture, so it is the moment to wake it.
@@ -1431,7 +1788,7 @@ async function record() {
     return;
   }
 
-  setStatus('Get ready…', true);
+  setStatus(t('getReady'), true);
   countIn(() => {
     let rec;
     try {
@@ -1443,7 +1800,7 @@ async function record() {
         MIME ? { mimeType: MIME, audioBitsPerSecond: 128000 } : {}
       );
     } catch (e) {
-      setStatus('This browser cannot record. Try Chrome, or Safari on iPhone.');
+      setStatus(t('noRecorder'));
       busy = false;
       buttons(true);
       return;
@@ -1461,9 +1818,8 @@ async function record() {
       // An empty file and a silent room look the same afterwards, so say which
       // rather than keeping a take that has nothing on it.
       if (blob.size < 1200) {
-        setStatus('That came back empty.');
-        note('The recording had nothing in it. Close other apps using the mic, reload ' +
-          'the page, and allow the microphone when asked.');
+        setStatus(t('cameBackEmpty'));
+        note(t('emptyNote'));
         return;
       }
 
@@ -1483,15 +1839,12 @@ async function record() {
           // Silent file, working mic: this browser will not record the
           // processed stream. Take the plain one from here on.
           useRaw = true;
-          setStatus('Lost that one. Tap Record to go again.');
-          note('This phone would not record through the processing, so it is switched ' +
-            'off. Takes will be a little quieter, which is fine, and this one needs ' +
-            'doing again.');
+          setStatus(t('lostThatOne'));
+          note(t('rawNote'));
           return;
         }
-        setStatus('That came out silent.');
-        note('Nothing reached the recording. Check nothing else is holding the mic, ' +
-          'and try once more.');
+        setStatus(t('cameOutSilent'));
+        note(t('silentNote'));
         return;
       }
 
@@ -1500,15 +1853,14 @@ async function record() {
       const n = (old ? old.n : 0) + 1;
       takes.set(c.id, { blob, url: URL.createObjectURL(blob), mime: rec.mimeType || MIME, n });
       keep(`${SONG}:${c.id}`, { blob, mime: rec.mimeType || MIME, n, sent: false });
-      setStatus('Got it. Have a listen.');
-      $('btn-record').textContent = GUIDE ? 'Redo guide' : 'Redo';
+      setStatus(t('gotIt'));
+      $('btn-record').textContent = t(GUIDE ? 'redoGuide' : 'redo');
       pips();
       buttons(true);
       // Warn, never discard. Where the file could not be read, the meter is
       // the only witness there is.
       if ((peak >= 0 && peak < 0.05) || (peak < 0 && heard < 0.02)) {
-        note('That one came out quiet. Have a listen, and try closer to the phone if ' +
-          'it is hard to hear.');
+        note(t('quietNote'));
       }
       // A guide goes up straight away, because there is one of it and the person
       // recording it is the one who wants it there. A fan's takes wait for the
@@ -1520,7 +1872,7 @@ async function record() {
     // has room at both ends. The timeslice matters: without one, some versions
     // of Safari hand back a single empty blob at the end.
     rec.start(250);
-    setStatus('Ready…', true);
+    setStatus(t('ready'), true);
 
     const finish = (loudest) => {
       if (rec.state === 'inactive') return;
@@ -1980,6 +2332,24 @@ function show(which) {
   window.scrollTo(0, 0);
 }
 
+/**
+ * The parts of a live screen the script wrote rather than the markup.
+ *
+ * data-t covers everything sitting in the HTML, but a block number, a status
+ * or a button that changes with what has been recorded is written by the code
+ * that knows the state. Rather than reach into each of those, the screen in
+ * front of the fan is simply drawn again.
+ */
+function repaintLive() {
+  if (!CHANTS.length) return;
+  if (!screens.rec.hidden) goto(at);
+  else if (!screens.done.hidden) finish();
+}
+
+$('flag-ko').addEventListener('click', () => setLang('ko'));
+$('flag-ja').addEventListener('click', () => setLang('ja'));
+paint();
+
 function goto(i) {
   if (busy) return;
   stopPlaying();
@@ -1990,9 +2360,9 @@ function goto(i) {
   pips();
   $('save-note').hidden = true;
   $('btn-record').textContent = GUIDE
-    ? (takes.has(c.id) ? 'Redo guide' : 'Record guide')
-    : (takes.has(c.id) ? 'Redo' : 'Record');
-  setStatus(takes.has(c.id) ? 'Recorded. Play it back, or redo it.' : 'Guide first, then record.');
+    ? t(takes.has(c.id) ? 'redoGuide' : 'recordGuide')
+    : t(takes.has(c.id) ? 'redo' : 'record');
+  setStatus(takes.has(c.id) ? t('recorded') : t('guideFirst'));
   $('countdown').textContent = '';
   $('meter-fill').style.width = '0%';
   buttons(true);
@@ -2015,11 +2385,11 @@ function step(by) {
 
 function finish() {
   stopPlaying();
-  $('btn-done').textContent = 'My takes';
+  $('btn-done').textContent = t('myTakes');
   const n = takes.size;
   $('tally-n').textContent = n;
-  $('tally-label').textContent = `of ${CHANTS.length} recorded`;
-  $('done-title').textContent = 'Your takes';
+  $('tally-label').textContent = t('ofRecorded', { m: CHANTS.length });
+  $('done-title').textContent = t('yourTakes');
   $('done-tabs').innerHTML = CHANTS
     .map((c, i) =>
       `<button class="tab ${takes.has(c.id) ? 'done' : ''}" data-i="${i}">${i + 1}</button>`)
@@ -2034,7 +2404,7 @@ let sheetAt = -1;
 function openSheet(i) {
   sheetAt = i;
   const c = CHANTS[i];
-  $('sheet-no').textContent = `Block ${i + 1} of ${CHANTS.length}`;
+  $('sheet-no').textContent = t('blockOf', { n: i + 1, m: CHANTS.length });
   $('sheet-text').innerHTML = c.lines
     .map((l) => l.w.map((w) => (w.c ? `<b>${esc(w.k)}</b>` : esc(w.k))).join(' '))
     .join('<br>');
@@ -2053,12 +2423,12 @@ function closeSheet() {
 
 async function uploadAll() {
   if (!takes.size) {
-    $('upload-note').textContent = 'Nothing recorded yet.';
+    $('upload-note').textContent = t('nothingYet');
     return;
   }
   if (!CAN_UPLOAD) {
     $('upload-note').textContent =
-      'Uploading is not set up yet, so these takes live only on this phone.';
+      t('noUpload');
     return;
   }
   $('btn-upload').disabled = true;
@@ -2069,7 +2439,7 @@ async function uploadAll() {
 
   if (!outstanding.length) {
     $('btn-upload').disabled = false;
-    $('upload-note').textContent = `All ${takes.size} already sent. Thank you!`;
+    $('upload-note').textContent = t('allSent', { n: takes.size });
     return;
   }
 
@@ -2078,7 +2448,7 @@ async function uploadAll() {
   let why = '';
   for (const c of outstanding) {
     const t = takes.get(c.id);
-    $('upload-note').textContent = `Sending ${sent + failed + 1} of ${outstanding.length}…`;
+    $('upload-note').textContent = t('sending', { n: sent + failed + 1, m: outstanding.length });
     try {
       await put('takes', `${SONG}/${c.id}/${sessionId}-${t.n}.webm`, t.blob, t.mime);
       uploaded.add(`${c.id}:${t.n}`);
@@ -2102,8 +2472,8 @@ async function uploadAll() {
   $('btn-upload').disabled = false;
   $('upload-note').textContent = failed
     ? `${sent} sent, ${failed} would not go through. Press again to retry those. (${why})`
-    : `All ${uploaded.size} sent. Thank you!`;
-  if (!failed) $('done-title').textContent = 'Sent. Thank you!';
+    : t('allSentN', { n: uploaded.size });
+  if (!failed) $('done-title').textContent = t('sentThanks');
 }
 
 /* ---------------- wiring ---------------- */
@@ -2148,7 +2518,7 @@ $('sheet-retake').addEventListener('click', () => {
   show('rec');
   goto(i);
   // Arrived from the list, so say so on the way out.
-  $('btn-done').textContent = 'Back to my takes';
+  $('btn-done').textContent = t('backToTakes');
 });
 $('sheet-close').addEventListener('click', closeSheet);
 $('sheet').addEventListener('click', (e) => { if (e.target === $('sheet')) closeSheet(); });
@@ -2171,7 +2541,7 @@ async function showPicker() {
           `<small>${x.blocks} blocks, ${x.minutes} min</small></button>`)
         .join('');
     } catch (e) {
-      $('song-list').innerHTML = '<p class="muted">Could not load the song list.</p>';
+      $('song-list').innerHTML = `<p class="muted">${t('noSongList')}</p>`;
     }
   }
   show('pick');
@@ -2191,7 +2561,7 @@ async function loadSong(name) {
     if (!res.ok) throw new Error('song ' + res.status);
     song = await res.json();
   } catch (e) {
-    $('song-list').innerHTML = '<p class="muted">Could not load that song.</p>';
+    $('song-list').innerHTML = `<p class="muted">${t('noSong')}</p>`;
     return;
   }
 
@@ -2240,14 +2610,14 @@ $('title').addEventListener('click', () => { if (!busy) showPicker(); });
     $('lede').textContent =
       'Record or upload a guide for each block, so every naya knows what they are ' +
       'copying. These are saved as the guide track, not as a crowd take.';
-    $('btn-record').textContent = 'Record guide';
+    $('btn-record').textContent = t('recordGuide');
     $('guide-file').addEventListener('change', uploadGuide);
   }
 
   if (!window.MediaRecorder || !navigator.mediaDevices) {
     $('lede').hidden = false;
     $('lede').textContent =
-      'This browser cannot record audio. Open the link in Chrome, or in Safari on iPhone.';
+      t('cannotRecord');
   }
 
   // Before you start comes first, whichever way someone arrived.
