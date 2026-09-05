@@ -9,16 +9,16 @@
     {
      "w": [
       {
-       "k": "Mai",
-       "r": "Mai",
+       "k": "Mai,",
+       "r": "Mai,",
        "t": 0,
        "d": 0.76,
        "c": 1,
        "s": 0
       },
       {
-       "k": ", Bang Jeemin,",
-       "r": ", Bang Jeemin,",
+       "k": "Bang Jeemin,",
+       "r": "Bang Jeemin,",
        "t": 0.76,
        "d": 0.76,
        "c": 1,

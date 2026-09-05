@@ -67,10 +67,91 @@ const NAMES = [
   [/i[.\-·]z[.\-·]na/gi, 'izna'],
 ];
 
+/**
+ * Names that arrive split across several units.
+ *
+ * The video cuts a word wherever the sweep needs a step, so "iznaya" can be
+ * three units, `iz` `na` `ya!`, which reads as three separate things to shout.
+ * Where neighbouring units spell one of these, they are put back together. The
+ * check is against this list rather than a rule about spaces, because a Korean
+ * line is cut one syllable per unit and a rule would weld every line into one
+ * word.
+ */
+const WHOLE = [
+  'iznaya', 'izna', 'naya', 'koko', 'mai', '이즈나야', '이즈나', '나야',
+  '함성', 'cheer',
+];
+const bare = (t) => t.replace(/[^\p{L}\p{N}]/gu, '').toLowerCase();
+
+function joinNames(words) {
+  const out = [];
+  for (let i = 0; i < words.length; i += 1) {
+    let took = 1;
+    for (let n = 4; n >= 2; n -= 1) {
+      if (i + n > words.length) continue;
+      const run = words.slice(i, i + n);
+      // Only a run with nothing but the word in it: a space means two words.
+      if (run.slice(0, -1).some((w) => /\s$/.test(w.k))) continue;
+      if (!WHOLE.includes(bare(run.map((w) => w.k).join('')))) continue;
+      out.push({
+        ...run[0],
+        k: run.map((w) => w.k).join(''),
+        r: run.map((w) => w.r).join(''),
+        d: +(run[run.length - 1].t + run[run.length - 1].d - run[0].t).toFixed(2),
+        c: run.some((w) => w.c) ? 1 : 0,
+        s: run.some((w) => w.s) ? 1 : 0,
+      });
+      took = n;
+      break;
+    }
+    if (took === 1) out.push(words[i]);
+    i += took - 1;
+  }
+  return out;
+}
+
+/**
+ * Punctuation that opens a unit belongs to the one before it.
+ *
+ * "Mai" then ", Bang Jeemin," reads as a stray comma waiting for a word. The
+ * comma ends the name in front of it, so that is where it goes.
+ */
+function tidyCommas(words) {
+  for (let i = 1; i < words.length; i += 1) {
+    const m = /^([,.!?;:]+)\s*/.exec(words[i].k);
+    if (!m || !words[i - 1].k) continue;
+    words[i].k = words[i].k.slice(m[0].length);
+    words[i - 1].k = words[i - 1].k.replace(/\s*$/, '') + m[1];
+    const mr = /^([,.!?;:]+)\s*/.exec(words[i].r);
+    if (mr && words[i - 1].r) {
+      words[i].r = words[i].r.slice(mr[0].length);
+      words[i - 1].r = words[i - 1].r.replace(/\s*$/, '') + mr[1];
+    }
+  }
+  return words.filter((w) => w.k.trim().length || w.r.trim().length);
+}
+
 function strip(t) {
   let out = t.replace(/[()]/g, '');
   for (const [re, to] of NAMES) out = out.replace(re, to);
-  return /^\s*(함성|CHEER)/i.test(out) ? out.replace(/^(\s*)(.*?)(\s*)$/, '$1($2)$3') : out;
+  return out;
+}
+
+/**
+ * The cue to shout keeps its brackets, and it is done last.
+ *
+ * 함성 and CHEER are directions rather than lyrics, and bare they look like
+ * something to sing. It waits until the words have been put back together,
+ * because the video sometimes cuts the cue itself in two and half of it would
+ * not be recognised on its own.
+ */
+function bracketCues(words) {
+  const isCue = (t) => /^(함성|cheer)$/i.test(bare(t));
+  return words.map((w) => {
+    if (!isCue(w.k) && !isCue(w.r)) return w;
+    const wrap = (t) => (t.trim() ? t.replace(/^(\s*)(.*?)(\s*)$/, '$1($2)$3') : t);
+    return { ...w, k: wrap(w.k), r: wrap(w.r) };
+  });
 }
 
 // Group lines by the block they are drawn in.
@@ -83,6 +164,7 @@ p.lines.forEach((l, i) => {
 });
 
 const out = [];
+const mismatched = [];
 
 // The opening cheer lives as a text box rather than a lyric line, so it has to
 // be picked up separately or it is missed entirely.
@@ -141,6 +223,20 @@ for (const idx of blocks.values()) {
    * entry, and nothing to tell one short answer apart from the others. Short
    * runs take more, up to three, on the same reasoning.
    */
+  /*
+   * A line sung at the same time as a chant comes with it.
+   *
+   * The two are one moment on screen: izna singing and the crowd answering
+   * over the top. Keeping only the chant left the answer with nothing to answer,
+   * and put a later line above an earlier one.
+   */
+  while (first > 0) {
+    const before = all[first - 1].src;
+    const runStart = all[first].src[0].start;
+    if (before[before.length - 1].end <= runStart + 0.05) break;
+    first -= 1;
+  }
+
   const span = () => all[last].src[all[last].src.length - 1].end - all[first].src[0].start;
   while (first > 0 && (last - first + 1 < 2 || (last - first + 1 < 3 && span() < 4))) first -= 1;
 
@@ -152,9 +248,21 @@ for (const idx of blocks.values()) {
   const end = Math.max(...raw.map((l) => l.src[l.src.length - 1].end));
 
   const lines = raw.map(({ i, src, mine }) => {
-    const ro = (p.romaji && p.romaji.lines[i] && p.romaji.lines[i].syllables) || [];
+    let ro = (p.romaji && p.romaji.lines[i] && p.romaji.lines[i].syllables) || [];
+    /*
+     * The rows pair unit for unit or not at all.
+     *
+     * A romaji row cut into a different number of pieces than the line it reads
+     * cannot be lined up by position, and pairing them anyway puts a romanised
+     * word under an unrelated one. Better an empty row than a wrong one, and the
+     * warning says which line to go and split properly.
+     */
+    if (ro.length && ro.length !== src.length) {
+      mismatched.push(`line ${i}: ${src.length} words, ${ro.length} romaji`);
+      ro = [];
+    }
     return {
-      w: src.map((s, j) => ({
+      w: bracketCues(joinNames(tidyCommas(src.map((s, j) => ({
         k: strip(s.text).trim(),
         r: strip((ro[j] && ro[j].text) || '').trim(),
         t: +(s.start - start).toFixed(2),
@@ -163,7 +271,7 @@ for (const idx of blocks.values()) {
         // Struck through in the video: izna's word that the chant talks over.
         // Not the fan's to sing, but they need to see where they land on it.
         s: s.strike ? 1 : 0,
-      })),
+      }))))),
     };
   });
 
@@ -190,3 +298,8 @@ out.forEach((b, i) => {
   );
 });
 console.log(`\nsongs/${name}.json: ${out.length} blocks`);
+if (mismatched.length) {
+  console.log(`
+${mismatched.length} line(s) whose romaji does not pair, shown without it:`);
+  mismatched.forEach((m) => console.log('  ' + m));
+}
