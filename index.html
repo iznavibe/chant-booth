@@ -1609,9 +1609,18 @@ function drawWave() {
   const t0 = -PRE - 0.3;
   const t1 = Math.max(placing.buf.duration, placing.from + placing.len) + 0.3;
   const span = t1 - t0;
+  /*
+   * Two maps, and they are not interchangeable.
+   *
+   * `x` places a moment, so it subtracts where the view starts. `dx` measures a
+   * stretch of time, so it must not. Adding one x to another silently adds that
+   * offset twice, which is what put every word a second and a bit ahead of the
+   * audio it was meant to sit on.
+   */
   const x = (sec) => ((sec - t0) / span) * W;
+  const dx = (sec) => (sec / span) * W;
   const left = x(placing.from);
-  const wide = Math.max(8, x(placing.from + placing.len) - left);
+  const wide = Math.max(8, dx(placing.len));
 
   // ---- ruler ----
   g.fillStyle = tone('--muted');
@@ -1655,6 +1664,7 @@ function drawWave() {
   const wavW = x(placing.buf.duration) - from0;
   placing.peaks.forEach((p, i) => {
     const px = from0 + (i / placing.peaks.length) * wavW;
+    if (px < 0 || px > W) return;
     const inside = px >= left && px <= left + wide;
     g.fillStyle = inside ? tone('--pink') : tone('--muted');
     g.globalAlpha = inside ? 1 : 0.3;
@@ -1682,8 +1692,8 @@ function drawWave() {
   const rows = Math.max(1, b.lines.length);
   const rowH = Math.min(16, WORDS_H / rows);
   words.forEach((w) => {
-    const wx = left + x(PRE + w.t);
-    const ww = Math.max(2, x(w.d));
+    const wx = x(placing.from + PRE + w.t);
+    const ww = Math.max(2, dx(w.d));
     const wy = WORDS_TOP + w.row * rowH;
     g.fillStyle = w.c ? tone('--pink') : tone('--muted');
     g.globalAlpha = w.c ? 1 : 0.45;
