@@ -238,7 +238,18 @@ p.lines.forEach((l, i) => {
 });
 
 const out = [];
-const mismatched = [];
+/*
+ * Romaji that found no word, and words that found no romaji.
+ *
+ * Not the same as the two rows being cut differently, which is ordinary: the
+ * lyric is cut where the sweep needs a step and the romaji where it reads, so
+ * 다음은 is three pieces above and one below and pairs perfectly well. Mamma
+ * Mia block 12 has fifteen pieces against nine and every word finds its own.
+ * What matters is whether the timings agree, and the way that shows when they
+ * do not is a word left with nothing under it, or a romaji left over.
+ */
+const unpaired = [];
+const mmss = (t) => Math.floor(t / 60) + ':' + String(Math.floor(t % 60)).padStart(2, '0');
 
 // The opening cheer lives as a text box rather than a lyric line, so it has to
 // be picked up separately or it is missed entirely.
@@ -391,9 +402,6 @@ function assemble(all, first, last) {
      * the same answer and cheaper.
      */
     const even = roRaw.length === src.length;
-    if (roRaw.length && !even) {
-      mismatched.push(`line ${i}: ${src.length} words, ${roRaw.length} romaji`);
-    }
 
     /*
      * Every romaji finds a word, and words sharing one become one.
@@ -411,17 +419,44 @@ function assemble(all, first, last) {
      * Rows are kept apart, since a chant sung over a line covers the same
      * seconds as the words underneath it.
      */
-    const rowOf = (u) => u.row || 0;
     const overlap = (x, y) => Math.min(x.end, y.end) - Math.max(x.start, y.start);
 
     /*
-     * Which row each romaji is on, including the ones that do not say.
+     * Which row each unit is on, for the units that say.
      *
-     * A chant sung over a line is a second row, and both rows carry the marker
-     * for it, except that four units across the ten projects were saved without
-     * one. Those read as row 0 and were paired against the words the chant is
-     * sung over: Mamma Mia's 이즈날 봐 landed inside 우리를 봐, which came out as
-     * "urireul iznal bwa bwa", and TIMEBOMB lost 최정은's romaji altogether.
+     * A chant sung over a line is a second row, and the marker saying so is
+     * written per unit and is sometimes missing. A bracket does not change row
+     * halfway through, so a run that opens on one stays there: TIMEBOMB writes
+     * (정세비, 이즈나) with the marker on the half that opens it and not the
+     * half that closes it, and the closing half read as row 0 while its romaji,
+     * which is marked, had nothing left to pair with and was dropped.
+     */
+    const marked = (units) => {
+      const rows = [];
+      let open;
+      units.forEach((u) => {
+        const row = u.row !== undefined ? u.row : open;
+        rows.push(row);
+        // An opener that does not say its own row carries nothing: the rest of
+        // the run is left unknown too, rather than all of it being pinned to a
+        // row that was only ever a default.
+        if (u.text.includes('(')) open = row;
+        if (u.text.includes(')')) open = undefined;
+      });
+      return rows;
+    };
+
+    // The lyric is the row the romaji is read against, so where it still does
+    // not say, it is the first row by definition.
+    const srcRow = marked(src).map((r) => r || 0);
+
+    /*
+     * And which row each romaji is on, including the ones that never say.
+     *
+     * Four units across the ten projects were saved with neither a marker nor a
+     * bracket to carry one. They read as row 0 and were paired against the words
+     * the chant is sung over: Mamma Mia's 이즈날 봐 landed inside 우리를 봐 and
+     * came out as "urireul iznal bwa bwa".
      *
      * A romaji covers the same seconds as the lyric it spells, so a missing
      * marker is recovered from the seconds. Whole rows are weighed rather than
@@ -433,28 +468,29 @@ function assemble(all, first, last) {
      * decides: a word the chant talks over is struck through in both rows, so a
      * struck romaji belongs to the struck lyric and a plain one to the chant.
      */
-    const roRow = roRaw.map((r) => {
-      if (r.row !== undefined) return r.row;
+    const roRow = marked(roRaw).map((known, k) => {
+      if (known !== undefined) return known;
+      const r = roRaw[k];
       const score = new Map();
-      src.forEach((u) => {
+      src.forEach((u, j) => {
         const over = overlap(u, r);
         if (over <= 0) return;
         const alike = !u.strike === !r.strike ? 2 : 1;
-        score.set(rowOf(u), (score.get(rowOf(u)) || 0) + over * alike);
+        score.set(srcRow[j], (score.get(srcRow[j]) || 0) + over * alike);
       });
       let row = 0;
       let most = 0;
-      score.forEach((v, k) => { if (v > most) { most = v; row = k; } });
+      score.forEach((v, key) => { if (v > most) { most = v; row = key; } });
       return row;
     });
 
     // Which romaji each word sits under, whether or not it is the only one.
-    const owner = src.map((u) => {
+    const owner = src.map((u, uj) => {
       if (even) return -1;
       let best = -1;
       let most = 0;
       roRaw.forEach((r, k) => {
-        if (roRow[k] !== rowOf(u)) return;
+        if (roRow[k] !== srcRow[uj]) return;
         const over = overlap(u, r);
         if (over > most) { most = over; best = k; }
       });
@@ -497,7 +533,7 @@ function assemble(all, first, last) {
        * chant. A word split by the sweep always shares one flag.
        */
       const sameFlag = prev && !!mine[n] === !!mine[prev.at + prev.units.length - 1];
-      if (prev && sameFlag && (sameRomaji || joined) && rowOf(u) === rowOf(src[prev.at])) {
+      if (prev && sameFlag && (sameRomaji || joined) && srcRow[n] === srcRow[prev.at]) {
         prev.units.push(u);
       } else {
         groups.push({ at: n, units: [u] });
@@ -510,12 +546,15 @@ function assemble(all, first, last) {
       let best = -1;
       let most = 0;
       groups.forEach((g, n) => {
-        if (rowOf(src[g.at]) !== roRow[k]) return;
+        if (srcRow[g.at] !== roRow[k]) return;
         const span = { start: g.units[0].start, end: g.units[g.units.length - 1].end };
         const over = overlap(span, r);
         if (over > most) { most = over; best = n; }
       });
       if (best >= 0) parts[best].push(r.text);
+      // Only where this pairing is the one that counts. Rows cut the same are
+      // paired by position instead, and what happens here is never read.
+      else if (!even && r.text.trim()) unpaired.push(`${mmss(r.start)} romaji "${r.text.trim()}" belongs to no word`);
     });
 
     return {
@@ -627,10 +666,13 @@ out.forEach((b, i) => {
   );
 });
 console.log(`\nsongs/${name}.json: ${out.length} blocks`);
-if (mismatched.length) {
-  console.log(
-    `
-${mismatched.length} line(s) cut differently from their romaji, matched by time:`
-  );
-  mismatched.forEach((m) => console.log('  ' + m));
+
+out.forEach((b) => b.lines.forEach((l) => l.w.forEach((w) => {
+  if (w.r === '' && w.k.trim()) unpaired.push(`${mmss(b.at + w.t)} ${b.id} "${w.k}" has no romaji`);
+})));
+
+if (unpaired.length) {
+  console.log(`
+${unpaired.length} word(s) left unpaired:`);
+  unpaired.forEach((m) => console.log('  ' + m));
 }
