@@ -172,7 +172,7 @@
   .block { margin: 16px 0 4px; display: flex; flex-direction: column; gap: 10px; }
   .ln { display: flex; flex-direction: column; gap: 1px; }
   .kr { font-size: clamp(1.05rem, 4.4vw, 1.35rem); line-height: 1.4; word-break: keep-all; }
-  .ro { font-size: clamp(.72rem, 3vw, .85rem); line-height: 1.35; word-break: break-word; }
+  .ro { font-size: clamp(.82rem, 3.4vw, .96rem); line-height: 1.35; word-break: break-word; }
 
   /*
    * The karaoke fill.
@@ -244,7 +244,7 @@
   .song small { margin-left: auto; color: var(--muted); font-weight: 400; font-size: .8rem; }
   .song { font-size: 1rem; cursor: pointer; }
 
-  .legend { font-size: .78rem; color: var(--muted); margin-top: 2px; }
+  .legend { font-size: .78rem; color: var(--muted); margin-bottom: 8px; }
   .legend b { color: var(--ink-soft); }
 
   /* Step left and right through the blocks, and play a take back. */
@@ -477,9 +477,9 @@
     <div class="pips" id="pips"></div>
 
     <div class="stage" id="stage" style="margin-top:14px">
+      <p class="legend" id="legend">Sing the words in <b>Bold</b></p>
       <span class="badge" id="chant-badge"></span>
       <div class="block" id="block"></div>
-      <p class="legend" id="legend">Sing the words in <b>Bold</b></p>
       <div class="lead" id="lead"><b id="lead-bar"></b></div>
       <div class="meter"><i id="meter-fill"></i></div>
       <div class="level" id="level" hidden><i id="level-bar"></i></div>
@@ -1368,7 +1368,7 @@ async function listen() {
   buttons(false);
 
   const done = () => {
-    setStatus(GUIDE ? 'Record the guide when ready.' : 'Your turn. Hit Record.');
+    setStatus(GUIDE ? 'Record the guide when ready.' : '');
     $('countdown').textContent = '';
     busy = false;
     buttons(true);
@@ -1379,7 +1379,7 @@ async function listen() {
     const buf = await guideBuffer(where.file);
     if (buf) {
       // A voice guide beats a click: it carries the words, not just the beat.
-      setStatus('Listen…');
+      setStatus('');
       playWindow(buf, where.from, where.len, where.lead || 0);
       if (where.hold > 0) setTimeout(() => sweep(c, done), where.hold * 1000);
       else sweep(c, done);
