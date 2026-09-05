@@ -1147,7 +1147,22 @@ async function restoreTakes() {
     const v = vals[i];
     if (!v || !String(k).startsWith(SONG + ':') || !v.blob) return;
     const id = String(k).slice(SONG.length + 1);
-    takes.set(id, { blob: v.blob, url: URL.createObjectURL(v.blob), mime: v.mime, n: v.n || 1 });
+    /*
+     * With how late the microphone was when it was recorded.
+     *
+     * Without it a take came back from storage with nothing to correct by, so
+     * it played late: right after recording it, late after stepping to another
+     * song and back, which is a strange enough shape to be hard to place. The
+     * device's own figure stands in for a take from before this was kept,
+     * being a property of the phone rather than of any one take.
+     */
+    takes.set(id, {
+      blob: v.blob,
+      url: URL.createObjectURL(v.blob),
+      mime: v.mime,
+      n: v.n || 1,
+      lag: v.lag > 0 ? v.lag : micLag,
+    });
     if (v.sent) uploaded.add(`${id}:${v.n || 1}`);
   });
 
@@ -1824,6 +1839,12 @@ const FLAT_STRIKE = new Set(['metronome', 'izna']);
 let micLag = 0;
 let warnedAboutMic = false;
 
+/** Remembered, since the phone is the same phone tomorrow. */
+function rememberLag(said) {
+  micLag = said;
+  remember('micLag', said);
+}
+
 /*
  * A hand on top of the measurement, for when it is close but not right.
  *
@@ -2497,7 +2518,7 @@ async function record() {
       const peak = heard.peak;
       // The file where it can be read, the microphone where it cannot.
       const lag = heard.lag > 0 ? heard.lag : heardLag;
-      if (lag > 0) micLag = lag;
+      if (lag > 0) rememberLag(lag);
 
       if (peak >= 0 && peak < 0.005) {
         if (!useRaw) {
@@ -2517,7 +2538,7 @@ async function record() {
       if (old) URL.revokeObjectURL(old.url);
       const n = (old ? old.n : 0) + 1;
       takes.set(c.id, { blob, url: URL.createObjectURL(blob), mime: rec.mimeType || MIME, n, lag });
-      keep(`${SONG}:${c.id}`, { blob, mime: rec.mimeType || MIME, n, sent: false });
+      keep(`${SONG}:${c.id}`, { blob, mime: rec.mimeType || MIME, n, lag, sent: false });
       setStatus(t('gotIt'));
       showRig();
       $('btn-record').textContent = t(GUIDE ? 'redoGuide' : 'redo');
@@ -3129,7 +3150,9 @@ async function uploadAll() {
     try {
       await put('takes', `${SONG}/${c.id}/${sessionId}-${take.n}.webm`, take.blob, take.mime);
       uploaded.add(`${c.id}:${take.n}`);
-      keep(`${SONG}:${c.id}`, { blob: take.blob, mime: take.mime, n: take.n, sent: true });
+      keep(`${SONG}:${c.id}`, {
+        blob: take.blob, mime: take.mime, n: take.n, lag: take.lag, sent: true,
+      });
       sent += 1;
     } catch (e) {
       failed += 1;
@@ -3335,6 +3358,9 @@ $('title').addEventListener('click', () => { if (!busy) showPicker(); });
 
 (async function start() {
   store = await openStore();
+  const savedLag = await recall('micLag');
+  if (savedLag > 0) micLag = savedLag;
+
   const who = await recall('handle');
   if (who) { handle = who; $('handle').value = who; }
 
