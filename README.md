@@ -57,7 +57,7 @@ part and not.
 What a fan hears instead is your guide voice with the words sweeping in time,
 then a 3-2-1 count-in.
 
-Every clip is the same shape: **1s lead-in, the chant, 1.5s tail**, with the mic
+Every clip is the same shape: **1s lead-in, the chant, 0.8s tail**, with the mic
 open for all of it. The lead-in is a silent beat to draw breath, and room at the
 head of the clip so the attack of a shout is never clipped. Nothing sounds
 during it, because anything sounding while the mic is open ends up in the
@@ -300,6 +300,11 @@ before the words start moving, so the run-in is heard and then the sweep begins
 where it always does: whatever the run-up, the first word lands exactly one
 second into the sweep. It can be changed on a block already placed without
 loading its file again, since the mark is in the manifest.
+
+That is also why **"Bring every guide in this song up to date"** exists: a guide
+is a mark plus a run-up and everything else follows from the block, so when the
+shape changes the windows are rebuilt from what is already stored rather than
+placed by hand again.
 
 Everything follows from that mark. Whatever runs up to it is played under the
 count, so an intro leading into a cheer is heard the way it is in the song and a

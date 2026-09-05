@@ -471,7 +471,7 @@
         <button class="primary" id="guide-save">Save this block</button>
       </div>
       <button class="ghost full" id="guide-all" hidden>Place every block from this</button>
-      <button class="ghost full" id="guide-redo" hidden>Add the run-up to guides already placed</button>
+      <button class="ghost full" id="guide-redo" hidden>Bring every guide in this song up to date</button>
     </div>
 
     <div class="pips" id="pips"></div>
@@ -581,12 +581,13 @@ const BEAT = 0.6;     // seconds between count-in clicks
  * the tempo, the meter shows time passing, and anything sounding while the mic
  * is open would end up in the recording.
  *
- * TAIL is the same courtesy at the other end. Both are fixed, so the words sit
- * at the same offset in every take of every chant and the whole pile still
- * drops onto the timeline at one offset.
+ * TAIL is the same courtesy at the other end, and shorter, because a shout is
+ * over when it is over and the rest is a fan waiting for the recorder to stop.
+ * Both are fixed, so the words sit at the same offset in every take of every
+ * chant and the whole pile still drops onto the timeline at one offset.
  */
 const PRE = 1.0;
-const TAIL = 1.5;
+const TAIL = 0.8;
 
 const $ = (id) => document.getElementById(id);
 const screens = {
@@ -1795,25 +1796,27 @@ async function uploadGuide(e) {
 }
 
 /**
- * Bring guides placed under the old rules forward.
+ * Work every guide's window out again from where its first word is.
  *
- * They were saved as a silent count then the shout, because that was all the
- * page could do. Their stored start was the mark, so the run-up can be worked
- * out from what is already there and nothing has to be placed again.
+ * A guide is a mark plus a run-up, and everything else about it follows from
+ * the block. So when the shape changes, whether the lead-in became audible or
+ * the tail got shorter, the windows can be rebuilt from what is already stored
+ * and nothing has to be placed by hand a second time. The oldest guides predate
+ * the mark being written down; for those the stored start was the mark.
  */
 $('guide-redo').addEventListener('click', async () => {
-  const old = CHANTS.filter((b) => guideAt[b.id] && guideAt[b.id].mark === undefined);
-  if (!old.length) { $('guide-note').textContent = 'Every guide already has its run-up.'; return; }
+  const old = CHANTS.filter((b) => guideAt[b.id]);
+  if (!old.length) { $('guide-note').textContent = 'No guides in this song yet.'; return; }
   $('guide-redo').disabled = true;
   try {
     old.forEach((b) => {
       const was = guideAt[b.id];
-      guideAt[b.id] = { file: was.file, ...windowFor(was.from, b) };
+      const mark = was.mark === undefined ? was.from : was.mark;
+      guideAt[b.id] = { file: was.file, ...windowFor(mark, b, was.run) };
     });
     await writeGuideMap();
     $('guide-note').textContent =
-      `${old.length} guide${old.length === 1 ? '' : 's'} brought forward. Press Guide to hear one.`;
-    $('guide-redo').hidden = true;
+      `${old.length} guide${old.length === 1 ? '' : 's'} brought up to date. Press Guide to hear one.`;
   } catch (err) {
     $('guide-note').textContent = locked(err.message)
       ? 'Guides are locked. Paste the service_role key above.'
@@ -2178,8 +2181,7 @@ async function loadSong(name) {
   if (GUIDE) {
     $('guidebox').hidden = false;
     showPlacing();
-    $('guide-redo').hidden =
-      !Object.values(guideAt).some((e) => e && e.mark === undefined);
+    $('guide-redo').hidden = !Object.keys(guideAt).length;
     // Nothing here is a take, so the way to the take list is noise.
     $('btn-done').hidden = true;
   }
