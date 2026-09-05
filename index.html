@@ -455,6 +455,7 @@
       <canvas id="wave" hidden style="width:100%;height:156px;touch-action:none;
               border-radius:12px;background:var(--sunk);cursor:grab"></canvas>
       <p class="muted" id="wave-at" hidden></p>
+      <button class="ghost full" id="guide-snap" hidden>Start the words at the clip's start</button>
       <div class="row" id="guide-acts" hidden>
         <button class="ghost" id="guide-hear">Play</button>
         <button class="primary" id="guide-save">Save this block</button>
@@ -1596,9 +1597,17 @@ function drawWave() {
    * could be neither seen nor grabbed. Now the view stretches to hold both, and
    * the part with no audio behind it is drawn as such.
    */
+  /*
+   * The view starts at a fixed point, not at the window.
+   *
+   * Anchoring it to `from` meant that dragging the window left dragged the view
+   * left with it, so the window sat in the same place on screen and looked
+   * stuck. The left edge is now one lead-in before zero, which is as far back as
+   * a block can start, so there is always visible room to move into.
+   */
   const b = CHANTS[at];
-  const t0 = Math.min(0, placing.from) - 0.15;
-  const t1 = Math.max(placing.buf.duration, placing.from + placing.len) + 0.15;
+  const t0 = -PRE - 0.3;
+  const t1 = Math.max(placing.buf.duration, placing.from + placing.len) + 0.3;
   const span = t1 - t0;
   const x = (sec) => ((sec - t0) / span) * W;
   const left = x(placing.from);
@@ -1613,10 +1622,23 @@ function drawWave() {
     g.globalAlpha = 0.5;
     g.fillRect(tx, 0, 1, 6);
     g.globalAlpha = 0.8;
-    const m = Math.floor(t / 60);
-    g.fillText(`${m}:${String(Math.round(t - m * 60)).padStart(2, '0')}`, tx + 3, 12);
+    // Minus one second is -0:01, not -1:59.
+    const sign = t < 0 ? '-' : '';
+    const a = Math.abs(t);
+    const m = Math.floor(a / 60);
+    g.fillText(`${sign}${m}:${String(Math.round(a - m * 60)).padStart(2, '0')}`, tx + 3, 12);
   }
   g.globalAlpha = 1;
+
+  // ---- where the file itself begins ----
+  g.strokeStyle = tone('--purple');
+  g.lineWidth = 1;
+  g.setLineDash([3, 3]);
+  g.beginPath();
+  g.moveTo(x(0), RULER);
+  g.lineTo(x(0), TL_H);
+  g.stroke();
+  g.setLineDash([]);
 
   // ---- anywhere the file does not reach ----
   const mid = WAVE_TOP + WAVE_H / 2;
@@ -1682,7 +1704,7 @@ function drawWave() {
 
 function showPlacing() {
   const on = !!placing;
-  ['wave', 'wave-at', 'guide-acts'].forEach((id) => { $(id).hidden = !on; });
+  ['wave', 'wave-at', 'guide-acts', 'guide-snap'].forEach((id) => { $(id).hidden = !on; });
   $('guide-all').hidden = !on || placing.buf.duration < 45;
   if (!on) return;
   const b = CHANTS[at];
@@ -1700,8 +1722,8 @@ function showPlacing() {
   let mode = null;
   let grab = 0;
   const view = () => {
-    const t0 = Math.min(0, placing.from) - 0.15;
-    const t1 = Math.max(placing.buf.duration, placing.from + placing.len) + 0.15;
+    const t0 = -PRE - 0.3;
+    const t1 = Math.max(placing.buf.duration, placing.from + placing.len) + 0.3;
     return [t0, t1 - t0];
   };
   const secAt = (e) => {
@@ -1728,8 +1750,7 @@ function showPlacing() {
     if (!mode || !placing) return;
     const t = secAt(e);
     if (mode === 'move') {
-      placing.from = Math.max(-guideLength(CHANTS[at]),
-        Math.min(placing.buf.duration - 0.25, t - grab));
+      placing.from = Math.max(-PRE, Math.min(placing.buf.duration - 0.25, t - grab));
     } else if (mode === 'left') {
       // Moving the start moves the words with it; the end stays put.
       const end = placing.from + placing.len;
@@ -1782,6 +1803,14 @@ async function uploadGuide(e) {
     $('guide-note').textContent = 'That file could not be read. An mp3 or m4a works best.';
   }
 }
+
+$('guide-snap').addEventListener('click', () => {
+  if (!placing) return;
+  // Trimmed to the first word, which is the usual way to cut one of these.
+  // The lead-in then sits before the file and plays as silence.
+  placing.from = -PRE;
+  showPlacing();
+});
 
 $('guide-hear').addEventListener('click', () => {
   if (!placing || busy) return;

@@ -286,9 +286,16 @@ grey. Alignment becomes something you look at rather than count. Drag a shout
 onto the transient it belongs to and it is right; being a frame out is visible
 instead of something found later by listening.
 
-The timeline spans the file and the window, whichever reaches further, so a
-block wanting more seconds than the clip has still shows its window rather than
-pushing it off the edge. The stretch with no audio behind it is drawn greyed.
+The timeline starts one lead-in before the file, which is as far back as a block
+can start, and runs to whichever of the file or the window reaches further. That
+left edge is fixed on purpose: anchoring the view to the window meant dragging
+the window left dragged the view with it, so it sat in the same place on screen
+and looked stuck. The stretch with no audio behind it is greyed, and a dashed
+line marks where the file itself begins.
+
+**"Start the words at the clip's start"** is the one-tap version of the usual
+case: a clip cut hard to the first word, where the lead-in has to sit before the
+file and play as silence.
 
 The window has a handle at each end. The left one sets where the block starts,
 which is what carries the words with it. The right one sets how much of the file
