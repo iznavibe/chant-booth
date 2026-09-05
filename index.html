@@ -1645,7 +1645,65 @@ async function heardIn(blob) {
  * with what is on screen. Falls back to a plain audio element on any browser
  * that will not decode its own recording.
  */
-const PLAY_GAIN = 2.6;
+/*
+ * How loud a clip plays back, worked out from the clip.
+ *
+ * A fixed lift was another number chosen against one recording. Takes used to
+ * come back quiet, so playback multiplied everything by two and a half and
+ * leant on a limiter to catch what that overshot. Now that the input is
+ * levelled on the way in, a take already arrives near half of full scale, and
+ * multiplying it again puts it well past the ceiling: the take on file is fine
+ * and only the listening back sounds torn, which is exactly what it was.
+ *
+ * So the clip is read before it is played and lifted to land near the same
+ * place whatever it arrived at. A quiet one still comes up; a full one is left
+ * alone or brought down.
+ */
+const PLAY_AIM = 0.7;
+const PLAY_LIFT = [0.4, 4];
+
+function liftFor(buf) {
+  const d = buf.getChannelData(0);
+  let peak = 0;
+  for (let i = 0; i < d.length; i += 16) peak = Math.max(peak, Math.abs(d[i]));
+  if (peak < 0.001) return 1;
+  return Math.max(PLAY_LIFT[0], Math.min(PLAY_LIFT[1], PLAY_AIM / peak));
+}
+
+/*
+ * How long after it is asked for a sound is actually heard.
+ *
+ * The words are moved by a timer and the sound is scheduled on the audio
+ * clock, and between the two sits however long the device needs to get it out
+ * of the speaker. On a laptop that is a few milliseconds and nobody would
+ * know. On a phone it is a tenth of a second or more, which is why the same
+ * playback reads as together on one and behind on the other. Whatever waits on
+ * being heard waits this much longer.
+ */
+function outLag() {
+  if (LOOK !== null) return LOOK;
+  const c = audio();
+  const fair = (v) => typeof v === 'number' && v > 0 && v < 0.5;
+
+  // What the browser says it costs, where it says.
+  if (fair(c.outputLatency)) return c.outputLatency;
+
+  /*
+   * Otherwise, the distance between the sound being written and the sound
+   * being heard, which the context will report as two clocks: the one it is
+   * filling and the one coming out of the speaker. Safari does not give a
+   * latency but does give these.
+   */
+  try {
+    const ts = c.getOutputTimestamp && c.getOutputTimestamp();
+    if (ts && ts.contextTime > 0) {
+      const gap = c.currentTime - ts.contextTime;
+      if (fair(gap)) return gap;
+    }
+  } catch (e) { /* not everywhere */ }
+
+  return Math.min(0.5, c.baseLatency || 0);
+}
 
 /*
  * How far the guide steps back while a take plays over it.
@@ -1685,6 +1743,18 @@ let micLag = 0;
  */
 const NUDGE = Math.max(-0.3, Math.min(0.3,
   parseFloat(new URLSearchParams(location.search).get('nudge')) || 0));
+
+/*
+ * And a hand on top of what the device says its speaker costs.
+ *
+ * ?look=0.15 holds the words back a further tenth and a half against the
+ * sound, for a browser that does not report its output latency honestly, or at
+ * all. Left alone, the device is believed.
+ */
+const LOOK = (() => {
+  const said = parseFloat(new URLSearchParams(location.search).get('look'));
+  return Number.isFinite(said) ? Math.max(0, Math.min(0.5, said)) : null;
+})();
 
 let playing = [];
 
@@ -1736,7 +1806,7 @@ async function prepare(src) {
         const node = c.createBufferSource();
         node.buffer = buf;
         const gain = c.createGain();
-        gain.gain.value = PLAY_GAIN;
+        gain.gain.value = liftFor(buf);
         const limit = c.createDynamicsCompressor();
         limit.threshold.value = -6;
         limit.ratio.value = 12;
@@ -2202,7 +2272,8 @@ function playWindow(buf, from, len, lead, keep, level, when) {
   const node = c.createBufferSource();
   node.buffer = buf;
   const gain = c.createGain();
-  gain.gain.value = level === undefined ? PLAY_GAIN : level;
+  // `level` is a share of what this clip wants, not a level of its own.
+  gain.gain.value = liftFor(buf) * (level === undefined ? 1 : level);
   const limit = c.createDynamicsCompressor();
   limit.threshold.value = -6;
   limit.ratio.value = 12;
@@ -2240,7 +2311,8 @@ async function listen() {
       // A voice guide beats a click: it carries the words, not just the beat.
       setStatus('');
       playWindow(buf, where.from, where.len, where.lead || 0);
-      const after = (AHEAD + (where.hold > 0 ? where.hold : 0)) * 1000;
+      // The words wait for the sound to be out of the speaker, not merely sent.
+      const after = (AHEAD + outLag() + (where.hold > 0 ? where.hold : 0)) * 1000;
       setTimeout(() => sweep(c, done), after);
       return;
     }
@@ -3039,7 +3111,7 @@ async function playTake() {
   const opens = ctx.currentTime + AHEAD;
   const enter = opens + (buf && where.hold > 0 ? where.hold : 0);
   if (buf) {
-    playWindow(buf, where.from, where.len, where.lead || 0, false, PLAY_GAIN * GUIDE_UNDER, opens);
+    playWindow(buf, where.from, where.len, where.lead || 0, false, GUIDE_UNDER, opens);
   }
   // Started part-way in by however late this phone's microphone was, which
   // puts the voice back where the fan sang it rather than where it landed.
@@ -3050,7 +3122,7 @@ async function playTake() {
   setTimeout(() => {
     if (stops !== mark) return;      // stopped while the run-up was playing
     sweep(c, () => stopPlaying());
-  }, Math.max(0, (enter - ctx.currentTime) * 1000));
+  }, Math.max(0, (enter - ctx.currentTime + outLag()) * 1000));
 }
 
 $('btn-play').addEventListener('click', playTake);
