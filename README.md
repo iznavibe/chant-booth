@@ -236,16 +236,27 @@ block is still reachable by arrow, by tapping its dot, or from that grid.
 
 ## The guides
 
-You are cutting these from izna's own fanchant videos, so guide mode takes a file
-as well as a recording:
-
 ```
 ?song=beep#guide
 ```
 
-Each block shows the exact song time it starts at, so a clip can be cut to match.
-"Upload a clip" stores it as that block's guide; fans then hear it on Listen with
-the words sweeping over it. Audio or video, up to 25MB, stored as it arrives.
+**Easiest: cut them from one file.** Drop the whole song in, video or audio, and
+every block is sliced from it at the timings the video already uses. No trimming,
+no naming, no exporting 21 clips. "Hear this block" checks the alignment and the
+nudge box shifts every slice at once if the file starts late or early, which it
+will if it has a channel bumper on the front.
+
+Each slice runs from one second before the block's first word to 1.5 seconds
+after its last, the same shape a take has, so guide and sweep line up. They come
+out as 32kHz mono WAV, around 10MB for a song.
+
+The per-block "Upload a clip" is still there for anything that needs its own
+treatment, and Record guide still records one by voice. All three write to the
+same place, so they mix freely.
+
+Guides are stored with no file extension. What arrives may be webm, mp4 or wav
+depending on where it came from, the page reads the bytes rather than the name,
+and calling them all `.webm` would only be a claim that happens to be false.
 
 ## Adding another song
 

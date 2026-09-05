@@ -97,6 +97,7 @@
 
   h1, h2, button { font-family: var(--display); }
   h1 { font-size: 1.6rem; margin: 0; letter-spacing: -.01em; font-weight: 700; text-wrap: balance; }
+  h1#title { cursor: pointer; }
   h2 { font-size: 1.1rem; margin: 0; font-weight: 600; }
   p { margin: 0; }
 
@@ -226,6 +227,7 @@
     font-weight: 600;
   }
   .song small { margin-left: auto; color: var(--muted); font-weight: 400; font-size: .8rem; }
+  .song { font-size: 1rem; cursor: pointer; }
 
   .legend { font-size: .78rem; color: var(--muted); margin-top: 2px; }
   .legend b { color: var(--ink-soft); }
@@ -408,7 +410,6 @@
         <label for="handle" class="muted">Your name for the credits (optional)</label>
         <input id="handle" type="text" placeholder="@yourhandle" maxlength="40" autocomplete="off">
       </div>
-      <p class="note" id="resume" hidden style="margin-top:0"></p>
       <button class="primary full" id="begin">Let's go</button>
       <p class="muted">
         By taking part, you agree to your voice being used in a public fanchant
@@ -418,6 +419,33 @@
   </section>
 
   <section id="screen-rec" hidden>
+    <div class="card" id="slicer" hidden style="margin-bottom:14px;display:flex;flex-direction:column;gap:12px">
+      <h2>Cut the guides from one file</h2>
+      <p class="muted">
+        Drop in the whole song, video or audio, and every block is cut from it at
+        the timings the video already uses. No trimming, no naming.
+      </p>
+      <label class="ghost" for="slice-file"
+             style="text-align:center;border-radius:999px;padding:12px 22px;
+                    border:1px solid var(--edge);font-family:var(--display);
+                    font-weight:600;cursor:pointer">
+        Choose the full song
+        <input id="slice-file" type="file" accept="audio/*,video/*" hidden>
+      </label>
+      <label class="modeRow" style="display:flex;align-items:center;gap:10px">
+        <span class="muted" style="flex:1">Nudge, if the file starts late or early</span>
+        <input id="slice-offset" type="number" step="0.05" value="0"
+               style="width:96px;font:inherit;color:var(--ink);padding:8px 10px;
+                      border-radius:12px;border:1px solid var(--edge);background:var(--sunk)">
+        <span class="muted">s</span>
+      </label>
+      <div class="row">
+        <button class="ghost" id="slice-try" disabled>Hear this block</button>
+        <button class="primary" id="slice-go" disabled>Cut and upload all</button>
+      </div>
+      <p class="muted" id="slice-note"></p>
+    </div>
+
     <div class="pips" id="pips"></div>
 
     <div class="stage" id="stage" style="margin-top:14px">
@@ -501,7 +529,15 @@
  * ------------------------------------------------------------------ */
 
 const CFG = window.BOOTH_CONFIG || {};
-const SONG = new URLSearchParams(location.search).get('song');
+/**
+ * Which song, and it can change while the page is open.
+ *
+ * A fan arriving on a shared link lands on one; anyone else picks from the
+ * list, and tapping the title goes back to it. Reloading the page to switch
+ * would throw away the run-up: the consent read, the name typed, the
+ * microphone permission granted.
+ */
+let SONG = new URLSearchParams(location.search).get('song');
 
 /**
  * Guide mode.
@@ -561,15 +597,15 @@ let handle = '';
 let busy = false;
 
 /* A stable id for this visitor, so a redo replaces rather than piles up. */
-let sessionId;
-try {
-  sessionId = localStorage.getItem('booth-id-' + SONG);
-  if (!sessionId) {
-    sessionId = 'n' + Math.random().toString(36).slice(2, 10);
+let sessionId = 'n' + Math.random().toString(36).slice(2, 10);
+
+/** One id per song per phone, so a redo replaces rather than piles up. */
+function claimSession() {
+  try {
+    const held = localStorage.getItem('booth-id-' + SONG);
+    if (held) { sessionId = held; return; }
     localStorage.setItem('booth-id-' + SONG, sessionId);
-  }
-} catch (e) {
-  sessionId = 'n' + Math.random().toString(36).slice(2, 10);
+  } catch (e) { /* private browsing: this session only */ }
 }
 
 const esc = (s) => String(s).replace(/[&<>"]/g, (m) =>
@@ -636,8 +672,7 @@ const remember = (k, v) => idb('meta', 'readwrite', (o) => o.put(v, k));
 const recall = (k) => idb('meta', 'readonly', (o) => o.get(k));
 
 /** Everything this song has already recorded on this phone. */
-async function restore() {
-  store = await openStore();
+async function restoreTakes() {
   if (!store) return 0;
 
   const keys = (await allKeys()) || [];
@@ -650,8 +685,6 @@ async function restore() {
     if (v.sent) uploaded.add(`${id}:${v.n || 1}`);
   });
 
-  const who = await recall('handle');
-  if (who) handle = who;
   return takes.size;
 }
 
@@ -687,8 +720,16 @@ async function put(bucket, path, blob, type, replace) {
   if (!res.ok) throw new Error(res.status + ' ' + (await res.text()).slice(0, 200));
 }
 
+/**
+ * A guide's address, with no extension on it.
+ *
+ * What arrives can be a recording from a phone, a clip dragged in, or a slice
+ * cut here, so the container is webm, mp4 or wav depending. The page reads the
+ * bytes rather than the name, and naming every one of them .webm would only be
+ * a claim that happens to be false.
+ */
 function guideUrl(chantId) {
-  return `${CFG.url}/storage/v1/object/public/guides/${SONG}/${chantId}.webm`;
+  return `${CFG.url}/storage/v1/object/public/guides/${SONG}/${chantId}`;
 }
 
 /* ---------------- audio ---------------- */
@@ -1358,7 +1399,7 @@ function buttons(on) {
 async function saveGuide(c, blob, mime) {
   if (!CAN_UPLOAD) return;
   try {
-    await put('guides', `${SONG}/${c.id}.webm`, blob, mime, true);
+    await put('guides', `${SONG}/${c.id}`, blob, mime, true);
     const old = guides.get(c.id);
     if (old) URL.revokeObjectURL(old);
     guides.set(c.id, URL.createObjectURL(blob));
@@ -1394,7 +1435,7 @@ async function uploadGuide(e) {
 
   setStatus('Uploading the guide…');
   try {
-    await put('guides', `${SONG}/${c.id}.webm`, file, file.type || 'audio/webm', true);
+    await put('guides', `${SONG}/${c.id}`, file, file.type || 'audio/webm', true);
     const old = guides.get(c.id);
     if (old) URL.revokeObjectURL(old);
     guides.set(c.id, URL.createObjectURL(file));
@@ -1405,6 +1446,123 @@ async function uploadGuide(e) {
     note('The guide did not upload: ' + err.message);
   }
 }
+
+/* ---------------- cutting guides out of one file ---------------- */
+
+/**
+ * The whole song, decoded once and held for slicing.
+ *
+ * Trimming a clip per block by hand is 135 exports across ten songs, and every
+ * one of them a chance to be a frame out. The blocks already carry the exact
+ * second they start at, so the file can be cut by those instead: drop in the
+ * song, take 21 slices, done.
+ */
+let wholeSong = null;
+
+/** A slice of a decoded buffer as a mono WAV, which every browser can make. */
+function sliceToWav(buf, from, to) {
+  const rate = 32000; // plenty for a guide, and a third the size of 48k
+  const start = Math.max(0, Math.floor(from * buf.sampleRate));
+  const end = Math.min(buf.length, Math.ceil(to * buf.sampleRate));
+  const src = buf.getChannelData(0);
+  const src2 = buf.numberOfChannels > 1 ? buf.getChannelData(1) : null;
+
+  const count = Math.max(1, Math.round(((end - start) / buf.sampleRate) * rate));
+  const step = (end - start) / count;
+  const bytes = new ArrayBuffer(44 + count * 2);
+  const view = new DataView(bytes);
+  const tag = (at, str) => [...str].forEach((ch, i) => view.setUint8(at + i, ch.charCodeAt(0)));
+
+  tag(0, 'RIFF');
+  view.setUint32(4, 36 + count * 2, true);
+  tag(8, 'WAVEfmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, rate, true);
+  view.setUint32(28, rate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  tag(36, 'data');
+  view.setUint32(40, count * 2, true);
+
+  for (let i = 0; i < count; i += 1) {
+    const at = start + Math.floor(i * step);
+    // Both channels folded together, since a guide is played to one ear or two
+    // and either way wants everything that was in the mix.
+    let v = src[at] || 0;
+    if (src2) v = (v + (src2[at] || 0)) / 2;
+    view.setInt16(44 + i * 2, Math.max(-1, Math.min(1, v)) * 32767, true);
+  }
+  return new Blob([bytes], { type: 'audio/wav' });
+}
+
+/** Where a block's guide begins and ends, matching how a take is shaped. */
+function guideWindow(b) {
+  const nudge = parseFloat($('slice-offset').value) || 0;
+  return [b.at - PRE + nudge, b.at + b.dur + TAIL + nudge];
+}
+
+$('slice-file').addEventListener('change', async (e) => {
+  const file = e.target.files && e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  $('slice-note').textContent = `Reading ${file.name}…`;
+  try {
+    /*
+     * Decoded on an offline context, not the one that plays sound.
+     *
+     * The playing context is suspended whenever the page is in the background,
+     * and a decode issued against a suspended context can simply never come
+     * back. An offline context has no such state: it decodes on demand and is
+     * thrown away.
+     */
+    const Off = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+    const off = new Off(1, 1, 44100);
+    wholeSong = await off.decodeAudioData(await file.arrayBuffer());
+    $('slice-try').disabled = false;
+    $('slice-go').disabled = false;
+    $('slice-note').textContent =
+      `${Math.floor(wholeSong.duration / 60)}:${String(Math.floor(wholeSong.duration % 60))
+        .padStart(2, '0')} loaded. Try a block, nudge if it is out, then cut them all.`;
+  } catch (err) {
+    wholeSong = null;
+    $('slice-note').textContent =
+      'This browser could not read that file. An mp4 or m4a of the audio usually works.';
+  }
+});
+
+$('slice-try').addEventListener('click', async () => {
+  if (!wholeSong) return;
+  const [from, to] = guideWindow(CHANTS[at]);
+  (await prepare(sliceToWav(wholeSong, from, to))).start();
+  sweep(CHANTS[at], () => {});
+});
+
+$('slice-go').addEventListener('click', async () => {
+  if (!wholeSong || !CAN_UPLOAD) return;
+  $('slice-go').disabled = true;
+  let done = 0;
+  let why = '';
+  for (const b of CHANTS) {
+    $('slice-note').textContent = `Cutting and sending ${done + 1} of ${CHANTS.length}…`;
+    const [from, to] = guideWindow(b);
+    try {
+      const wav = sliceToWav(wholeSong, from, to);
+      await put('guides', `${SONG}/${b.id}`, wav, 'audio/wav', true);
+      const old = guides.get(b.id);
+      if (old) URL.revokeObjectURL(old);
+      guides.set(b.id, URL.createObjectURL(wav));
+      done += 1;
+    } catch (err) {
+      why = err.message;
+    }
+  }
+  $('slice-go').disabled = false;
+  $('slice-note').textContent = why
+    ? `${done} of ${CHANTS.length} sent. (${why})`
+    : `All ${done} guides sent. Press Guide on any block to hear it.`;
+});
 
 /* ---------------- moving through the list ---------------- */
 
@@ -1551,10 +1709,9 @@ $('begin').addEventListener('click', () => {
   handle = $('handle').value.trim().slice(0, 40);
   remember('handle', handle);
   audio(); // created inside the gesture, so later clicks are allowed to sound
-  show('rec');
-  // Back to the first block still waiting, rather than the very beginning.
-  const next = CHANTS.findIndex((c) => !takes.has(c.id));
-  goto(next === -1 ? 0 : next);
+  // A shared link already named a song; anyone else chooses one.
+  if (SONG) loadSong(SONG);
+  else showPicker();
 });
 $('btn-listen').addEventListener('click', listen);
 $('btn-record').addEventListener('click', record);
@@ -1594,47 +1751,86 @@ $('sheet-close').addEventListener('click', closeSheet);
 $('sheet').addEventListener('click', (e) => { if (e.target === $('sheet')) closeSheet(); });
 $('btn-upload').addEventListener('click', uploadAll);
 
-(async function start() {
-  // No song named, so offer the list rather than guessing at one.
-  if (!SONG) {
-    document.title = 'VibeChant';
-    $('eyebrow').textContent = 'izna';
+/** The list of songs, drawn once and shown whenever nothing is chosen. */
+async function showPicker() {
+  stopPlaying();
+  SONG = null;
+  document.title = 'VibeChant';
+  $('eyebrow').textContent = 'izna';
+  $('title').textContent = 'VibeChant';
+  history.replaceState(null, '', location.pathname + location.hash);
+
+  if (!$('song-list').children.length) {
     try {
       const { songs } = await (await fetch('songs/index.json', { cache: 'no-cache' })).json();
       $('song-list').innerHTML = songs
-        .map((s) => `<a class="song" href="?song=${encodeURIComponent(s.name)}">${esc(s.title)}` +
-          `<small>${s.blocks} blocks, ${s.minutes} min</small></a>`)
+        .map((x) => `<button class="song" data-song="${esc(x.name)}">${esc(x.title)}` +
+          `<small>${x.blocks} blocks, ${x.minutes} min</small></button>`)
         .join('');
-      show('pick');
     } catch (e) {
-      $('lede').hidden = false;
-      $('lede').textContent = 'Could not load the song list.';
+      $('song-list').innerHTML = '<p class="muted">Could not load the song list.</p>';
     }
-    return;
   }
+  show('pick');
+}
 
+/**
+ * Swap to a song without reloading.
+ *
+ * Everything held per song has to be put down and picked up again: the blocks,
+ * the takes and guides in memory, what has already been uploaded, and the id
+ * this phone uses for that song.
+ */
+async function loadSong(name) {
+  stopPlaying();
   try {
-    const res = await fetch(`songs/${SONG}.json`, { cache: 'no-cache' });
+    const res = await fetch(`songs/${name}.json`, { cache: 'no-cache' });
     if (!res.ok) throw new Error('song ' + res.status);
     song = await res.json();
-    CHANTS = song.chants;
   } catch (e) {
-    $('lede').hidden = false;
-    $('lede').textContent = 'Could not load the chants for this song. Check the link.';
+    $('song-list').innerHTML = '<p class="muted">Could not load that song.</p>';
     return;
   }
 
+  SONG = name;
+  CHANTS = song.chants;
+  takes.forEach((t) => t.url && URL.revokeObjectURL(t.url));
+  takes.clear();
+  guides.forEach((u) => u && URL.revokeObjectURL(u));
+  guides.clear();
+  uploaded.clear();
+  claimSession();
+  await restoreTakes();
+
+  history.replaceState(null, '', `?song=${encodeURIComponent(name)}${location.hash}`);
   document.title = `${song.title} · VibeChant`;
   $('eyebrow').textContent = `izna · ${song.title}` + (GUIDE ? ' · guide mode' : '');
-  $('title').textContent = GUIDE ? 'Record the guides' : 'VibeChant';
+  $('title').textContent = GUIDE ? 'Guides' : 'VibeChant';
+  if (GUIDE) $('slicer').hidden = false;
+
+  show('rec');
+  const next = CHANTS.findIndex((c) => !takes.has(c.id));
+  goto(next === -1 ? 0 : next);
+}
+
+$('song-list').addEventListener('click', (e) => {
+  const b = e.target.closest('.song');
+  if (b) loadSong(b.dataset.song);
+});
+
+// The title is the way back to the list.
+$('title').addEventListener('click', () => { if (!busy) showPicker(); });
+
+(async function start() {
+  store = await openStore();
+  const who = await recall('handle');
+  if (who) { handle = who; $('handle').value = who; }
+
   if (GUIDE) {
     $('lede').hidden = false;
     $('lede').textContent =
-      'Upload or record a guide for each block, so every naya knows what they are ' +
+      'Record or upload a guide for each block, so every naya knows what they are ' +
       'copying. These are saved as the guide track, not as a crowd take.';
-  }
-
-  if (GUIDE) {
     $('btn-record').textContent = 'Record guide';
     $('guide-upload').hidden = false;
     $('guide-file').addEventListener('change', uploadGuide);
@@ -1644,20 +1840,10 @@ $('btn-upload').addEventListener('click', uploadAll);
     $('lede').hidden = false;
     $('lede').textContent =
       'This browser cannot record audio. Open the link in Chrome, or in Safari on iPhone.';
-    return;
   }
 
-  const found = await restore();
-  if (found) {
-    if (handle) $('handle').value = handle;
-    $('begin').textContent = found === CHANTS.length ? 'Carry on' : 'Carry on where you left off';
-    $('resume').hidden = false;
-    $('resume').textContent =
-      `${found} of ${CHANTS.length} already recorded on this phone. They are still here.`;
-  }
-
+  // Before you start comes first, whichever way someone arrived.
   show('intro');
-  pips();
 })();
 </script>
 </body>
