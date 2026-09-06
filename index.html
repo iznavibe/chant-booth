@@ -275,7 +275,9 @@
     border-radius: 50%;
     background: var(--muted);
     opacity: .3;
-    transition: background .12s linear, opacity .12s linear, transform .12s ease-out;
+    /* Quick, because the third dot arriving is the beat: a slower fade puts
+       the moment a fan reads somewhere after the moment it stands for. */
+    transition: background .07s linear, opacity .07s linear, transform .07s ease-out;
   }
   .cue i.on { background: var(--pink); opacity: 1; transform: scale(1.35); }
   @media (prefers-reduced-motion: reduce) { .cue i { transition: none; } }
@@ -2568,7 +2570,8 @@ function paintChant(b) {
     const ro = [];
     shouts[li] = [];
     for (const w of shownWords(b, li)) {
-      if (w.c) shouts[li].push({ t: w.t, d: w.d });
+      // A struck word is one the shouting talks over, so it is not one to count.
+      if (w.c && !w.s) shouts[li].push({ t: w.t, d: w.d });
       const i = flatWords.length;
       flatWords.push(w);
       const cls = 'w' + (w.c ? ' c' : '') + (w.s ? ' s' : '');
@@ -2808,24 +2811,32 @@ const HOLD_OVER = 2;
  * the same warning twice and learns it once. The first lights at the far end
  * of it, the second halfway, and the third on the word itself, so the count is
  * read the way a count-in is heard rather than as something filling up.
+ *
+ * JOIN is how close two shouts have to be to count as one. It matches what
+ * the ring treats as one breath: below it there is no rest to count in, and a
+ * third of a second of dots would read as a stutter rather than a count.
  */
 const CUE_LEAD = 0.9;
+const JOIN = 0.3;
 
 /*
- * The stretches one line counts itself in on.
+ * The stretches one line counts itself in on, and how long each count runs.
  *
- * Two of them closer together than a count leave no room for one: the dots
- * would read three, drop to nothing and refill inside half a second, which is
- * flicker rather than warning. Those join, so there is a single count into the
- * pair and the dots stay lit across both.
+ * Words that run straight on from one another are one shout and take one
+ * count. Past that, every shout gets its own: the dots do not sit on three
+ * waiting for the first to finish, they drop and start counting the next one
+ * the moment there is a gap to count in. A gap shorter than a full count gets
+ * a shorter count rather than none, so the answer is the same wherever the
+ * shouts fall, which is what a line of three of them needs.
  */
 function countsIn(times) {
   const q = [];
   times.slice().sort((a, b) => a.t - b.t).forEach((w) => {
     const last = q[q.length - 1];
-    if (last && w.t - last.until < CUE_LEAD) { last.until = Math.max(last.until, w.t + w.d); return; }
+    if (last && w.t <= last.until + JOIN) { last.until = Math.max(last.until, w.t + w.d); return; }
     q.push({ at: w.t, until: w.t + w.d });
   });
+  q.forEach((k, i) => { k.lead = i ? Math.min(CUE_LEAD, k.at - q[i - 1].until) : CUE_LEAD; });
   return q;
 }
 
@@ -2891,11 +2902,12 @@ function sweep(c, onDone, opts) {
      */
     const pos = el - PRE;
     cueRows.forEach((row) => {
-      const going = row.q.some((q) => pos >= q.at && pos <= q.until);
-      const soon = going ? null : row.q.find((q) => pos < q.at && pos > q.at - CUE_LEAD);
+      // Counting the next one comes first: a count never runs into the shout
+      // before it, so a line with more to come is already on its way back down.
+      const soon = row.q.find((q) => pos < q.at && pos >= q.at - q.lead);
       let want = 0;
-      if (going) want = 3;
-      else if (soon) want = 1 + Math.floor((CUE_LEAD - (soon.at - pos)) / (CUE_LEAD / 2));
+      if (soon) want = 1 + Math.floor((soon.lead - (soon.at - pos)) / (soon.lead / 2));
+      else if (row.q.some((q) => pos >= q.at && pos <= q.until)) want = 3;
       if (want !== row.lit) { row.lit = want; cueLit(row.el, want); }
     });
 
