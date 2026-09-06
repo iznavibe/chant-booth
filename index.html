@@ -677,6 +677,7 @@
           <span class="at" id="wd-at">0.00s</span>
           <button class="ghost icon" id="wd-more">+</button>
         </div>
+        <button class="ghost full" id="word-split" hidden>Split into words</button>
         <div class="row" id="word-acts" hidden>
           <button class="ghost" id="word-reset">Back to the video</button>
           <button class="primary" id="word-save">Save the words</button>
@@ -1157,6 +1158,7 @@ const screens = {
 
 let CHANTS = [];
 let song = null;
+let builtChants = [];
 let at = 0;
 const takes = new Map();     // chantId -> {blob, url, mime, n}
 /**
@@ -2531,6 +2533,59 @@ const WORDS = '_words';
 let wordEdits = {};
 let builtWords = null;
 
+/*
+ * And whether a word is one word.
+ *
+ * The video sweeps 너와 나의 TIMEBOMB as a single step, because that is one
+ * move of the colour on screen. Here it is three things a fan says, and if the
+ * timing of the middle one is wrong there is no middle one to correct. So a
+ * word can be broken at its spaces into the words it actually is.
+ *
+ * There are no timings underneath to break it into, the video having only ever
+ * held one. Each part gets a share of the whole in proportion to its length,
+ * which is a starting point and usually close; from there each is retimed like
+ * any other word.
+ */
+const SPLIT = '_split';
+let wordSplits = {};
+
+function applySplits() {
+  CHANTS.forEach((b) => b.lines.forEach((l, li) => {
+    const made = [];
+    l.w.forEach((w) => {
+      const said = wordSplits[wordKey(b.id, li, made.length)];
+      const parts = said && said.k === w.k ? said.parts : null;
+      if (!parts) { made.push(w); return; }
+      parts.forEach((part) => made.push({
+        ...w, k: part.k, r: part.r, t: part.t, d: part.d, p: undefined, rp: undefined,
+      }));
+    });
+    l.w = made;
+  }));
+}
+
+/** Break a word at its spaces, sharing its time out by length. */
+function partsOf(w) {
+  const bits = w.k.split(/\s+/).filter(Boolean);
+  if (bits.length < 2) return null;
+  const romaji = w.r ? w.r.split(/\s+/).filter(Boolean) : [];
+  const whole = bits.reduce((n, x) => n + x.length, 0);
+  let at = w.t;
+  return bits.map((k, i) => {
+    const share = +((w.d * k.length) / whole).toFixed(3);
+    const part = {
+      k,
+      // Where the romaji breaks the same way it is used as it is; otherwise the
+      // whole of it goes under the first part rather than being cut wrongly.
+      r: romaji.length === bits.length ? romaji[i] : (i === 0 ? w.r : ''),
+      t: +at.toFixed(3),
+      d: i === bits.length - 1 ? +(w.t + w.d - at).toFixed(3) : share,
+    };
+    at += share;
+    return part;
+  });
+}
+
 const wordKey = (blockId, line, i) => `${blockId}:${line}:${i}`;
 
 /** What the song file said, before anything here was applied. */
@@ -2585,9 +2640,21 @@ async function loadGuideMap() {
     const said = await res.json();
     blockEdits = said[EDITS] || {};
     wordEdits = said[WORDS] || {};
+    wordSplits = said[SPLIT] || {};
     guideAt = said;
     delete guideAt[EDITS];
     delete guideAt[WORDS];
+    delete guideAt[SPLIT];
+    /*
+     * Breaking words first, then timing them.
+     *
+     * A correction names a word by where it sits in its line, and breaking one
+     * moves everything after it along. So the line is made whatever shape it
+     * is going to be, that shape is what gets remembered as the starting
+     * point, and only then are the timings put on top of it.
+     */
+    applySplits();
+    snapshotWords();
     applyWordEdits();
   } catch (e) { /* no guides yet is a normal state */ }
 }
@@ -2838,21 +2905,44 @@ async function saveGuide(c, blob, mime) {
  */
 function pruneWordEdits() {
   if (!CHANTS.length) return;
-  const real = new Set();
-  CHANTS.forEach((b) => b.lines.forEach((l, li) => l.w.forEach((w, wi) => {
-    real.add(wordKey(b.id, li, wi) + ' ' + w.k);
+  // A map rather than a joined string, so no character has to be chosen as
+  // one a word could never contain.
+  const real = new Map();
+  CHANTS.forEach((blk) => blk.lines.forEach((l, li) => l.w.forEach((w, wi) => {
+    real.set(wordKey(blk.id, li, wi), w.k);
   })));
   Object.keys(wordEdits).forEach((key) => {
-    if (!real.has(key + ' ' + wordEdits[key].k)) delete wordEdits[key];
+    if (real.get(key) !== wordEdits[key].k) delete wordEdits[key];
+  });
+}
+
+/*
+ * And forget a break made in a word the song file no longer has.
+ *
+ * Checked against the file as built rather than against the blocks in memory,
+ * because the blocks in memory are already broken and would agree with
+ * themselves. A rebuild that joins or renames a word leaves its break
+ * describing nothing.
+ */
+function pruneSplits() {
+  if (!builtChants.length) return;
+  Object.keys(wordSplits).forEach((key) => {
+    const [id, line, i] = key.split(':');
+    const blk = builtChants.find((c) => c.id === id);
+    const w = blk && blk.lines[+line] && blk.lines[+line].w[+i];
+    if (!w || w.k !== wordSplits[key].k) delete wordSplits[key];
   });
 }
 
 async function writeGuideMap() {
+  pruneSplits();
   pruneWordEdits();
   await put(
     'guides',
     `${SONG}/manifest.json`,
-    new Blob([JSON.stringify({ ...guideAt, [EDITS]: blockEdits, [WORDS]: wordEdits })],
+    new Blob([JSON.stringify({
+      ...guideAt, [EDITS]: blockEdits, [WORDS]: wordEdits, [SPLIT]: wordSplits,
+    })],
       { type: 'application/json' }),
     'application/json',
     true
@@ -3284,6 +3374,86 @@ function showWord() {
   $('wt-at').textContent = w.t.toFixed(2) + 's';
   $('wd-at').textContent = w.d.toFixed(2) + 's';
   $('word-reset').disabled = !moved;
+
+  // Either it can be broken up, or it is a piece of something that was.
+  const bits = partsOf(w);
+  const joined = splitHolding(picked.line, picked.i);
+  $('word-split').hidden = !bits && !joined;
+  $('word-split').textContent = joined
+    ? `Put "${joined.said.k}" back together`
+    : (bits ? `Split into ${bits.length} words` : '');
+}
+
+/**
+ * Whether this word is a piece of one that was broken up.
+ *
+ * Stored against the place the whole word sat, so a piece is found by counting
+ * back to where the run of them begins.
+ */
+function splitHolding(line, i) {
+  const b = CHANTS[at];
+  let at0 = 0;
+  const l = b.lines[line];
+  for (let n = 0; n < l.w.length; ) {
+    const said = wordSplits[wordKey(b.id, line, at0)];
+    const took = said ? said.parts.length : 1;
+    if (i >= n && i < n + took && said) return { at: at0, said };
+    n += took;
+    at0 += 1;
+  }
+  return null;
+}
+
+$('word-split').addEventListener('click', () => {
+  const w = pickedWord();
+  if (!w) return;
+  const b = CHANTS[at];
+  const joined = splitHolding(picked.line, picked.i);
+  if (joined) {
+    delete wordSplits[wordKey(b.id, picked.line, joined.at)];
+    picked = null;
+  } else {
+    const bits = partsOf(w);
+    if (!bits) return;
+    /*
+     * Named by where the whole word sits, which is its place counted in whole
+     * words rather than in pieces, so the key means the same thing before and
+     * after the line is broken.
+     */
+    const before = splitBeforeCount(picked.line, picked.i);
+    wordSplits[wordKey(b.id, picked.line, before)] = { k: w.k, parts: bits };
+  }
+  /*
+   * Rebuilt from the song file, since breaking or rejoining changes what every
+   * later word in the line is called by.
+   */
+  rebuildLine();
+  showWord();
+  paintChant(CHANTS[at]);
+  showPlacing();
+});
+
+/** How many whole words come before this piece in its line. */
+function splitBeforeCount(line, i) {
+  const b = CHANTS[at];
+  const l = b.lines[line];
+  let n = 0;
+  let whole = 0;
+  while (n < i) {
+    const said = wordSplits[wordKey(b.id, line, whole)];
+    n += said ? said.parts.length : 1;
+    whole += 1;
+  }
+  return whole;
+}
+
+/** Put the blocks back the way the song file has them, then apply everything. */
+function rebuildLine() {
+  CHANTS.length = 0;
+  builtChants.forEach((c) => CHANTS.push(JSON.parse(JSON.stringify(c))));
+  applySplits();
+  snapshotWords();
+  applyWordEdits();
 }
 
 function nudgeWord(field, by) {
@@ -4022,15 +4192,22 @@ async function loadSong(name) {
   }
 
   SONG = name;
-  CHANTS = song.chants;
+  /*
+   * Two copies, because one of them gets written on.
+   *
+   * The blocks in memory are broken up and retimed as the manifest says, and
+   * what the song file actually said has to survive that to be compared
+   * against and returned to. Handing out the same array for both meant editing
+   * the record of what was built.
+   */
+  builtChants = JSON.parse(JSON.stringify(song.chants));
+  CHANTS = JSON.parse(JSON.stringify(song.chants));
   takes.forEach((t) => t.url && URL.revokeObjectURL(t.url));
   takes.clear();
   uploaded.clear();
   claimSession();
   await restoreTakes();
   guideFiles.clear();
-  // What the song file says, kept before the manifest is allowed to correct it.
-  snapshotWords();
   await loadGuideMap();
 
   history.replaceState(null, '', `?song=${encodeURIComponent(name)}${location.hash}`);
