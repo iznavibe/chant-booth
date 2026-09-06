@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>VibeChant</title>
-<meta name="description" content="Record the izna fanchant one block at a time. Nayas' own voices become the guide videos we all practise with.">
+<meta name="description" content="Record izna's fanchant with your own voice, which will be used in a fanchant guide video for all nayas to practice with!">
 <meta name="theme-color" content="#fd538f">
 
 <!--
@@ -17,16 +17,16 @@
 -->
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="VibeChant">
-<meta property="og:title" content="VibeChant · izna fanchant">
-<meta property="og:description" content="Record the izna fanchant one block at a time. Nayas' own voices become the guide videos we all practise with.">
+<meta property="og:title" content="VibeChant - izna Fanchant Guide">
+<meta property="og:description" content="Record izna's fanchant with your own voice, which will be used in a fanchant guide video for all nayas to practice with!">
 <meta property="og:url" content="https://iznavibe.github.io/chant-booth/">
 <meta property="og:image" content="https://iznavibe.github.io/chant-booth/card.jpg">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
-<meta property="og:image:alt" content="VibeChant: record the fanchant, one block at a time.">
+<meta property="og:image:alt" content="izna's WHO DAT GIRL? tour poster beside the VibeChant name.">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="VibeChant · izna fanchant">
-<meta name="twitter:description" content="Record the izna fanchant one block at a time. Nayas' own voices become the guide videos we all practise with.">
+<meta name="twitter:title" content="VibeChant - izna Fanchant Guide">
+<meta name="twitter:description" content="Record izna's fanchant with your own voice, which will be used in a fanchant guide video for all nayas to practice with!">
 <meta name="twitter:image" content="https://iznavibe.github.io/chant-booth/card.jpg">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>🩷</text></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -570,7 +570,7 @@
       </ol>
       <div>
         <label for="handle" class="muted" data-t="handle">Username (optional)</label>
-        <input id="handle" type="text" maxlength="40" autocomplete="off">
+        <input id="handle" type="text" maxlength="40" autocomplete="off" data-t-ph="nickname">
       </div>
       <button class="primary full" id="begin" data-t="begin">iznaya</button>
       <p class="caution">
@@ -776,15 +776,19 @@ const $ = (id) => document.getElementById(id);
 
 const EN = {
   pick: 'Pick a song',
-  about: "We're making fanchant guide videos out of nayas' own voices, so we can "
-    + "all practise. Let's turn up to the concert ready and cheer izna on as "
-    + 'loud as we can!',
+  about: 'This is a fanchant guide project. We are making fanchant guide videos '
+    + "for izna's songs out of nayas' own voices. Once we have received your "
+    + 'fanchants, your voice will appear on the video along with many other '
+    + "people so it can sound like actual fanchants. Let's get ready for izna's "
+    + 'concert by practicing the fanchants and cheer izna on as loud as we can '
+    + 'during their concerts!',
   before: 'Before you start',
   s1: 'Go somewhere quiet, and keep the mic close to your mouth.',
   s2: 'Press Guide to hear it, then Record and sing along.',
   s3: 'Redo anything as many times as you like.',
   s4: 'When you are done, press Upload my takes.',
-  handle: 'Username (optional)',
+  handle: 'Nickname (optional)',
+  nickname: 'nickname',
   begin: 'iznaya',
   consent: 'By taking part, you agree to your voice being used in a public '
     + 'fanchant video. All recordings are deleted once the project is finished.',
@@ -864,14 +868,17 @@ const EN = {
 
 const KO = {
   pick: '곡 고르기',
-  about: '나야들의 목소리를 모아 응원법 가이드 영상을 만들고 있어요. '
-    + '다 같이 연습해서 콘서트 날 이즈나를 힘껏 응원해요!',
+  about: '응원법 가이드 프로젝트예요. 나야들의 목소리를 모아 이즈나 노래의 응원법 '
+    + '가이드 영상을 만들고 있어요. 보내주신 응원법은 다른 나야들의 목소리와 함께 '
+    + '영상에 담겨서 진짜 응원법처럼 들리게 돼요. 다 같이 연습해서 이즈나 콘서트 '
+    + '때 힘껏 응원해요!',
   before: '시작하기 전에',
   s1: '조용한 곳에서 마이크를 입 가까이 대주세요.',
   s2: '가이드를 눌러 들어보고, 녹음을 눌러 따라 외쳐주세요.',
   s3: '몇 번이든 다시 녹음할 수 있어요.',
   s4: '다 녹음하고 나면 마지막에 ‘녹음 보내기’를 눌러주세요.',
   handle: '닉네임 (선택)',
+  nickname: '닉네임',
   begin: '이즈나야',
   consent: '참여하시면 목소리가 공개되는 응원법 영상에 쓰이는 데 동의하시는 것으로 봅니다. '
     + '녹음 파일은 프로젝트가 끝나면 모두 삭제됩니다.',
@@ -948,14 +955,17 @@ const KO = {
 };
 const JA = {
   pick: '曲を選ぶ',
-  about: 'ナヤの声を集めて、ファンチャントのガイド映像をつくっています。'
+  about: 'ファンチャントガイドのプロジェクトです。ナヤの声を集めて、iznaの曲の'
+    + 'ファンチャントガイド映像をつくっています。送っていただいた声はほかの大勢の'
+    + '声と一緒に映像に入るので、本物のファンチャントのように聞こえます。'
     + 'みんなで練習して、コンサートではiznaを思いっきり応援しましょう！',
   before: 'はじめる前に',
   s1: '静かな場所で、マイクを口の近くに持ってください。',
   s2: 'ガイドを押して聞いてから、録音を押して一緒に叫んでください。',
   s3: '何度でも録り直せます。',
   s4: '全部録音したら、最後に「録音を送る」を押してください。',
-  handle: 'ユーザーネーム（任意）',
+  handle: 'ニックネーム（任意）',
+  nickname: 'ニックネーム',
   begin: 'イズナヤ',
   consent: '参加すると、声が公開のファンチャント映像に使われることに同意したものとみなされます。'
     + '録音はプロジェクトが終わり次第すべて削除します。',
@@ -1053,6 +1063,9 @@ function paint() {
   document.querySelectorAll('[data-t]').forEach((n) => { n.innerHTML = t(n.dataset.t); });
   document.querySelectorAll('[data-t-aria]').forEach((n) => {
     n.setAttribute('aria-label', t(n.dataset.tAria));
+  });
+  document.querySelectorAll('[data-t-ph]').forEach((n) => {
+    n.setAttribute('placeholder', t(n.dataset.tPh));
   });
   $('flag-ko').setAttribute('aria-pressed', String(LANG === 'ko'));
   $('flag-ja').setAttribute('aria-pressed', String(LANG === 'ja'));
