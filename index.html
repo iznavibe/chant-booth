@@ -343,7 +343,11 @@
     font-family: var(--display);
     font-weight: 600;
   }
-  .song small { margin-left: auto; color: var(--muted); font-weight: 400; font-size: .8rem; }
+  .song small { margin-left: auto; color: var(--muted); font-weight: 400; font-size: .8rem;
+                font-variant-numeric: tabular-nums; }
+  /* A song with every block recorded says so in the colour the rest of the
+     booth uses for something finished. */
+  .song small.done { color: var(--pink); }
   .song { font-size: 1rem; cursor: pointer; }
 
   /*
@@ -4692,15 +4696,52 @@ async function showPicker() {
   if (!$('song-list').children.length) {
     try {
       const { songs } = await (await fetch('songs/index.json', { cache: 'no-cache' })).json();
+      songTotals = {};
+      songs.forEach((x) => { songTotals[x.name] = x.blocks; });
       $('song-list').innerHTML = songs
         .map((x) => `<button class="song" data-song="${esc(x.name)}">${esc(x.title)}` +
-          `<small>${x.blocks} blocks, ${x.minutes} min</small></button>`)
+          '<small></small></button>')
         .join('');
     } catch (e) {
       $('song-list').innerHTML = `<p class="muted">${t('noSongList')}</p>`;
     }
   }
+  await showProgress();
   show('pick');
+}
+
+/*
+ * How far through each song this phone is.
+ *
+ * How long a song is and how many blocks it has told a fan nothing they were
+ * going to act on; how much of it they have already done is the one thing they
+ * come back to the list to find out. Counted from what is stored rather than
+ * from what is in memory, since only the song open at the time is in memory
+ * and the point is to see all of them at once.
+ */
+let songTotals = {};
+
+async function showProgress() {
+  const rows = $('song-list').querySelectorAll('.song');
+  if (!rows.length) return;
+  const done = {};
+  ((await allKeys()) || []).forEach((k) => {
+    const at = String(k).indexOf(':');
+    if (at > 0) {
+      const name = String(k).slice(0, at);
+      // A take left behind by a block that no longer exists would otherwise
+      // count towards a total it is no longer part of.
+      done[name] = (done[name] || 0) + 1;
+    }
+  });
+  rows.forEach((row) => {
+    const name = row.dataset.song;
+    const all = songTotals[name] || 0;
+    const n = Math.min(done[name] || 0, all);
+    const said = row.querySelector('small');
+    said.textContent = `${n}/${all}`;
+    said.classList.toggle('done', all > 0 && n >= all);
+  });
 }
 
 /**
