@@ -1385,14 +1385,20 @@ function eachKept() {
 const remember = (k, v) => idb('meta', 'readwrite', (o) => o.put(v, k));
 const recall = (k) => idb('meta', 'readonly', (o) => o.get(k));
 
-/** Everything this song has already recorded on this phone. */
-async function restoreTakes() {
+/**
+ * Everything this song has already recorded on this phone.
+ *
+ * Told which song rather than reading whichever is open. Loading a song is
+ * several waits long, and a second tap during them would leave this filling
+ * one song's blocks while another song's name was the current one.
+ */
+async function restoreTakes(name) {
   if (!store) return 0;
 
   const held = await eachKept();
   held.forEach(({ key: k, val: v }) => {
-    if (!v || !k.startsWith(SONG + ':') || !v.blob) return;
-    const id = k.slice(SONG.length + 1);
+    if (!v || !k.startsWith(name + ':') || !v.blob) return;
+    const id = k.slice(name.length + 1);
     /*
      * And it has to agree about which take it is.
      *
@@ -1402,7 +1408,7 @@ async function restoreTakes() {
      * is left alone rather than played as somebody else's. Takes from before
      * carry no such stamp and are taken at their filing.
      */
-    if (v.song !== undefined && (v.song !== SONG || v.id !== id)) return;
+    if (v.song !== undefined && (v.song !== name || v.id !== id)) return;
     /*
      * With how late the microphone was when it was recorded.
      *
@@ -4863,8 +4869,22 @@ async function showProgress() {
  * the takes and guides in memory, what has already been uploaded, and the id
  * this phone uses for that song.
  */
+/*
+ * Which load of a song is the one that counts.
+ *
+ * Opening a song waits on the song file, on the takes already recorded, and on
+ * the guides. Two taps close together start two of these, and whichever
+ * finished last used to write over what the other had done, in any order it
+ * liked: one song's blocks on screen while another's takes were being put into
+ * them. A load that has been overtaken now stops at its next wait and leaves
+ * everything to the one that overtook it.
+ */
+let loading = 0;
+
 async function loadSong(name) {
+  const mine = ++loading;
   if (!SONG_NAME.test(name) || !(await isASong(name))) { showPicker(); return; }
+  if (mine !== loading) return;
   stopPlaying();
   try {
     const res = await fetch(`songs/${name}.json`, { cache: 'no-cache' });
@@ -4874,6 +4894,7 @@ async function loadSong(name) {
     $('song-list').innerHTML = `<p class="muted">${t('noSong')}</p>`;
     return;
   }
+  if (mine !== loading) return;
 
   SONG = name;
   /*
@@ -4890,9 +4911,11 @@ async function loadSong(name) {
   takes.clear();
   uploaded.clear();
   claimSession();
-  await restoreTakes();
+  await restoreTakes(name);
+  if (mine !== loading) return;
   guideFiles.clear();
   await loadGuideMap();
+  if (mine !== loading) return;
 
   history.replaceState(null, '', `?song=${encodeURIComponent(name)}${location.hash}`);
   document.title = `${song.title} · VibeChant`;
