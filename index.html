@@ -1255,10 +1255,21 @@ let busy = false;
 let sessionId = 'n' + Math.random().toString(36).slice(2, 10);
 
 /** One id per song per phone, so a redo replaces rather than piles up. */
+/** What a session id may be: letters and digits, and it names a file. */
+const SESSION_ID = /^[A-Za-z0-9]{2,32}$/;
+
 function claimSession() {
   try {
     const held = localStorage.getItem('booth-id-' + SONG);
-    if (held) { sessionId = held; return; }
+    /*
+     * Checked on the way back in, not only on the way out.
+     *
+     * It is put into the path a take is uploaded to, and it comes from a store
+     * this page shares with anything else published under the same name. A
+     * fresh one is cheap; a name with a slash in it would write somewhere
+     * nobody meant.
+     */
+    if (held && SESSION_ID.test(held)) { sessionId = held; return; }
     localStorage.setItem('booth-id-' + SONG, sessionId);
   } catch (e) { /* private browsing: this session only */ }
 }
@@ -1283,6 +1294,30 @@ const esc = (s) => String(s).replace(/[&<>"]/g, (m) =>
  */
 const DB_NAME = 'vibechant';
 let store = null;
+
+/**
+ * How long the store is given to answer before the booth carries on without it.
+ *
+ * Every call here already survives a failure, but a failure is an event and
+ * this is the case where none arrives: a database held open by another tab, a
+ * phone that has decided to stop, and the request simply never finishes. The
+ * booth would then be waiting on it for the length of the session, which is a
+ * fan looking at a screen that never fills in.
+ *
+ * Reading a whole song of takes back, twenty-one of them and 2.6 MB, was
+ * measured at one to three milliseconds. The deadline is thousands of times
+ * that, because the two outcomes are not equal: cutting a slow device off
+ * early loses the takes it was about to hand over, while waiting forever loses
+ * the page. Only a device that has genuinely stopped answering reaches this.
+ */
+const DB_WAIT = 8000;
+
+function inTime(work) {
+  return Promise.race([
+    work,
+    new Promise((res) => setTimeout(() => res(null), DB_WAIT)),
+  ]);
+}
 
 /**
  * Ask the browser to treat these recordings as worth keeping.
@@ -1310,7 +1345,7 @@ function persistTakes() {
 }
 
 function openStore() {
-  return new Promise((res) => {
+  return inTime(new Promise((res) => {
     let req;
     try {
       req = indexedDB.open(DB_NAME, 1);
@@ -1325,11 +1360,11 @@ function openStore() {
     req.onsuccess = () => res(req.result);
     req.onerror = () => res(null);
     req.onblocked = () => res(null);
-  });
+  }));
 }
 
 function idb(name, mode, run) {
-  return new Promise((res) => {
+  return inTime(new Promise((res) => {
     if (!store) return res(null);
     let tx;
     try {
@@ -1341,7 +1376,7 @@ function idb(name, mode, run) {
     if (!req) { tx.oncomplete = () => res(null); return; }
     req.onsuccess = () => res(req.result);
     req.onerror = () => res(null);
-  });
+  }));
 }
 
 const keep = (key, val) => idb('takes', 'readwrite', (o) => o.put(val, key));
@@ -1362,7 +1397,7 @@ const allKeys = () => idb('takes', 'readonly', (o) => o.getAllKeys());
  * the key it yields.
  */
 function eachKept() {
-  return new Promise((res) => {
+  return inTime(new Promise((res) => {
     if (!store) return res([]);
     const out = [];
     let tx;
@@ -1380,7 +1415,7 @@ function eachKept() {
     };
     req.onerror = () => res(out);
     tx.onabort = () => res(out);
-  });
+  })).then((rows) => rows || []);
 }
 const remember = (k, v) => idb('meta', 'readwrite', (o) => o.put(v, k));
 const recall = (k) => idb('meta', 'readonly', (o) => o.get(k));
@@ -1498,7 +1533,8 @@ async function put(bucket, path, blob, type, replace) {
  * a whole song, so the container is webm, mp4 or mp3 depending. The page reads
  * the bytes rather than the name.
  */
-const guideUrl = (file) => `${CFG.url}/storage/v1/object/public/guides/${SONG}/${file}`;
+const guideUrl = (file) => `${CFG.url}/storage/v1/object/public/guides/${SONG}/`
+  + encodeURIComponent(String(file));
 
 /** Decode once and keep it: a whole song serves every block in the song. */
 async function guideBuffer(file) {
