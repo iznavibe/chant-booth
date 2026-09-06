@@ -1284,6 +1284,31 @@ const esc = (s) => String(s).replace(/[&<>"]/g, (m) =>
 const DB_NAME = 'vibechant';
 let store = null;
 
+/**
+ * Ask the browser to treat these recordings as worth keeping.
+ *
+ * Storage is best-effort unless it is asked not to be: under pressure a
+ * browser is free to throw away everything a site has kept, and iPhones clear
+ * script-written storage for sites left alone for a week. Somebody who records
+ * most of a song on Monday and comes back the following weekend is exactly the
+ * person this loses.
+ *
+ * Asked for inside the gesture that opens a song, since that is when a browser
+ * is willing to grant it, and asked for once. Refusal changes nothing about
+ * how the booth works: it is a request for the data to be kept, not permission
+ * to store it.
+ */
+let persistAsked = false;
+function persistTakes() {
+  if (persistAsked || !navigator.storage || !navigator.storage.persist) return;
+  persistAsked = true;
+  try {
+    navigator.storage.persisted().then((already) => {
+      if (!already) navigator.storage.persist().catch(() => {});
+    }).catch(() => {});
+  } catch (e) { /* not everywhere */ }
+}
+
 function openStore() {
   return new Promise((res) => {
     let req;
@@ -4653,6 +4678,7 @@ $('begin').addEventListener('click', () => {
   handle = $('handle').value.replace(/\p{C}/gu, ' ').trim().slice(0, 40);
   remember('handle', handle);
   warm(); // created and started inside the gesture, so later clicks may sound
+  persistTakes();
   // A shared link already named a song; anyone else chooses one.
   if (SONG) loadSong(SONG);
   else showPicker();
