@@ -248,16 +248,20 @@
    * one at a time on the way in, the third arriving on the beat to sing, and
    * they stay lit for as long as there is shouting to do.
    *
-   * The column stands up the right-hand side of the words, beside the line the
-   * shouting starts on, and moves to the next one during the rest before it.
-   * It runs out into the card's own padding and the words give up ten pixels
-   * either side, which is what keeps a long line from running into the dots
+   * Every line that has shouting on it gets its own column, standing at its
+   * right-hand end. One column that moved between lines had to travel while it
+   * was lit and arrived reading whatever the last line left it on, for as long
+   * as it took to fade; these never move. Two lines close together also count
+   * themselves in at the same time rather than sharing one count.
+   *
+   * The columns run out into the card's own padding and the words give up ten
+   * pixels either side, which is what keeps a long line from running into them
    * while leaving the block centred.
    */
   .blockrow { position: relative; margin: 0 -10px; padding: 0 20px; }
   .cue {
     position: absolute;
-    right: 0;
+    right: -20px;
     top: 50%;
     transform: translateY(-50%);
     display: flex;
@@ -288,7 +292,7 @@
   /* A block as it reads in the video: the original, its romaji underneath,
      and the shouted parts standing out from the sung ones. */
   .block { margin: 16px 0 4px; display: flex; flex-direction: column; gap: var(--gap, 10px); }
-  .ln { display: flex; flex-direction: column; gap: 1px; }
+  .ln { position: relative; display: flex; flex-direction: column; gap: 1px; }
   /* Where a line does have to take two rows, they come out the same length. */
   .kr { font-size: clamp(1.05rem, 4.4vw, 1.35rem); line-height: 1.4; word-break: keep-all;
         text-wrap: balance; }
@@ -789,7 +793,6 @@
       <span class="badge" id="chant-badge"></span>
       <div class="blockrow">
         <div class="block" id="block"></div>
-        <div class="cue" id="cue" aria-hidden="true"><i></i><i></i><i></i></div>
       </div>
       <div class="lead" id="lead"><b id="lead-bar"></b></div>
       <div class="meter"><i id="meter-fill"></i></div>
@@ -2381,6 +2384,8 @@ async function prepare(src) {
  * sweep never has to walk the structure again, forty times a second.
  */
 let flatWords = [];
+// A column of three dots per line that has shouting on it, and when it counts.
+let cueRows = [];
 let flatNodes = [];
 
 /**
@@ -2555,11 +2560,15 @@ function shownWords(b, li) {
 function paintChant(b) {
   flatWords = [];
   const rows = [];
+  // When each line is shouted on, so it can count itself in.
+  const shouts = [];
   const wantRead = readingWanted();
   for (let li = 0; li < b.lines.length; li += 1) {
     const kr = [];
     const ro = [];
+    shouts[li] = [];
     for (const w of shownWords(b, li)) {
+      if (w.c) shouts[li].push({ t: w.t, d: w.d });
       const i = flatWords.length;
       flatWords.push(w);
       const cls = 'w' + (w.c ? ' c' : '') + (w.s ? ' s' : '');
@@ -2569,7 +2578,11 @@ function paintChant(b) {
     }
     rows.push(
       `<div class="ln"><p class="kr">${kr.join(' ')}</p>` +
-      (ro.length ? `<p class="ro">${ro.join(' ')}</p>` : '') + '</div>'
+      (ro.length ? `<p class="ro">${ro.join(' ')}</p>` : '') +
+      (shouts[li].length
+        ? `<div class="cue" data-line="${li}" aria-hidden="true"><i></i><i></i><i></i></div>`
+        : '') +
+      '</div>'
     );
   }
   /*
@@ -2587,8 +2600,9 @@ function paintChant(b) {
   const GAP = { 1: 10, 2: 20, 3: 17, 4: 14 };
   $('block').style.setProperty('--gap', (GAP[b.lines.length] || 11) + 'px');
   $('block').innerHTML = rows.join('');
-  // The column stands beside a line, and this block has different ones.
-  $('cue').style.top = '';
+  cueRows = [...$('block').querySelectorAll('.cue')].map((el) => ({
+    el, q: countsIn(shouts[+el.dataset.line]), lit: -1,
+  }));
 
   fitLines();
 
@@ -2758,7 +2772,7 @@ let sweepRun = 0;
 function stopSweep() {
   sweepRun += 1;
   $('stage').classList.remove('shout');
-  cueLit(0);
+  cuesOff();
 }
 
 /**
@@ -2797,20 +2811,33 @@ const HOLD_OVER = 2;
  */
 const CUE_LEAD = 0.9;
 
-/** Stand the column beside the line a word is on. */
-function cueBy(i) {
-  const node = (flatNodes[i] || []).find((n) => n.dataset.row === 'k');
-  const line = node && node.closest('.ln');
-  if (!line) return;
-  const row = line.closest('.blockrow').getBoundingClientRect();
-  const on = line.getBoundingClientRect();
-  $('cue').style.top = `${on.top + on.height / 2 - row.top}px`;
+/*
+ * The stretches one line counts itself in on.
+ *
+ * Two of them closer together than a count leave no room for one: the dots
+ * would read three, drop to nothing and refill inside half a second, which is
+ * flicker rather than warning. Those join, so there is a single count into the
+ * pair and the dots stay lit across both.
+ */
+function countsIn(times) {
+  const q = [];
+  times.slice().sort((a, b) => a.t - b.t).forEach((w) => {
+    const last = q[q.length - 1];
+    if (last && w.t - last.until < CUE_LEAD) { last.until = Math.max(last.until, w.t + w.d); return; }
+    q.push({ at: w.t, until: w.t + w.d });
+  });
+  return q;
 }
 
-/** Light the first n of the three. */
-function cueLit(n) {
-  const dots = $('cue').children;
+/** Light the first n of a column's three. */
+function cueLit(el, n) {
+  const dots = el.children;
   for (let i = 0; i < dots.length; i += 1) dots[i].classList.toggle('on', i < n);
+}
+
+/** Every column dark, for when nothing is running. */
+function cuesOff() {
+  cueRows.forEach((row) => { row.lit = 0; cueLit(row.el, 0); });
 }
 
 function sweep(c, onDone, opts) {
@@ -2836,28 +2863,8 @@ function sweep(c, onDone, opts) {
     else runs.push({ at: w.t, until: w.t + w.d });
   });
   runs.forEach((r) => { r.held = r.until - r.at >= HOLD_OVER; });
-  /*
-   * Which stretches get counted in, and the word each count stands beside.
-   *
-   * Two stretches close enough together leave no room to count the second one
-   * in: the dots would read three, drop to nothing and refill inside half a
-   * second, which is flicker rather than warning. Those join up, so there is
-   * one count on the way into the pair and the dots stay lit across both.
-   */
-  const cues = [];
-  runs.forEach((r) => {
-    const last = cues[cues.length - 1];
-    if (last && r.at - last.until < CUE_LEAD) { last.until = Math.max(last.until, r.until); return; }
-    cues.push({
-      at: r.at,
-      until: r.until,
-      word: flatWords.findIndex((w) => w.c && Math.abs(w.t - r.at) < 0.001),
-    });
-  });
   let shouting = false;
   let flared = -1;
-  let lit = -1;
-  let beside = -1;
   let loudest = 0;
   // Last drawn fill per word, so a frame only touches what moved.
 
@@ -2883,15 +2890,14 @@ function sweep(c, onDone, opts) {
      * there is shouting to do so the third one is seen rather than guessed at.
      */
     const pos = el - PRE;
-    const going = cues.findIndex((q) => pos >= q.at && pos <= q.until);
-    const soon = cues.findIndex((q) => pos < q.at && pos > q.at - CUE_LEAD);
-    // The stretch being counted, or failing that the next one there is.
-    const which = going >= 0 ? going : cues.findIndex((q) => pos < q.until);
-    if (which >= 0 && which !== beside) { beside = which; cueBy(cues[which].word); }
-    let want = 0;
-    if (going >= 0) want = 3;
-    else if (soon >= 0) want = 1 + Math.floor((CUE_LEAD - (cues[soon].at - pos)) / (CUE_LEAD / 2));
-    if (want !== lit) { lit = want; cueLit(want); }
+    cueRows.forEach((row) => {
+      const going = row.q.some((q) => pos >= q.at && pos <= q.until);
+      const soon = going ? null : row.q.find((q) => pos < q.at && pos > q.at - CUE_LEAD);
+      let want = 0;
+      if (going) want = 3;
+      else if (soon) want = 1 + Math.floor((CUE_LEAD - (soon.at - pos)) / (CUE_LEAD / 2));
+      if (want !== row.lit) { row.lit = want; cueLit(row.el, want); }
+    });
 
     /*
      * A long stretch keeps the ring up for as long as it lasts; a quick one
@@ -2934,7 +2940,7 @@ function sweep(c, onDone, opts) {
       // Leave the block sung through rather than snapping back to nothing.
       flatNodes.forEach((ns) => ns.forEach((n) => n.classList.remove('now')));
       $('stage').classList.remove('shout');
-      cueLit(0);
+      cuesOff();
       $('meter-fill').style.width = '0%';
       $('lead').classList.remove('on');
       $('level').hidden = true;
