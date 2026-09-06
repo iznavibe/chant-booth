@@ -344,7 +344,29 @@ if (cheer && cheer.appearAt !== undefined) {
   });
 }
 
-for (const idx of blocks.values()) {
+/**
+ * Whether a row is a line anyone could read.
+ *
+ * A project collects rows that were never meant to be shown: an empty one, or
+ * a duplicate whose timings have collapsed. IZNA holds six words inside a
+ * tenth of a second, twenty milliseconds each, which is not something a fan
+ * can read off a phone and not something the video shows either. Left in, it
+ * takes up a line of the block and stands between a block and the line in
+ * front of it that a fan actually needs.
+ *
+ * Judged per unit rather than per line, since a short line is ordinary: Mamma
+ * Mia sings "Mamma Mia" in six tenths and means it.
+ */
+function readable(sylls) {
+  if (!sylls.length) return false;
+  const a = Math.min(...sylls.map((u) => u.start));
+  const b = Math.max(...sylls.map((u) => u.end));
+  return (b - a) / sylls.length >= 0.06;
+}
+
+for (const rawIdx of blocks.values()) {
+  const idx = rawIdx.filter((i) => readable(p.lines[i].syllables));
+  if (!idx.length) continue;
   // Brackets run across lines: the intro chant opens on the first line of its
   // block and closes on the third. Flags are worked out over the whole block
   // and handed back per line, or the middle of a chant reads as ordinary lyric.
@@ -699,6 +721,13 @@ out.forEach((b, i) => { b.id = 'b' + (i + 1); });
  *           lines run together and it is not. The chant is the same one both
  *           times, so the block should be too.
  *
+ *   order   the block's lines, in the order to show them, named by where they
+ *           would otherwise sit. Lines are normally shown in the order they
+ *           happen, and a chant sung over a line begins before the words it
+ *           answers, so it leads. IZNA's closing (이즈나야!) (함성!) is a cheer
+ *           held six seconds across the line that follows it, and time order
+ *           puts it above a line sung after it starts.
+ *
  *   pickup  how many words off the end of the line before the block to keep in
  *           front of its first line. RIP's "My evil side" is sung straight out
  *           of the line above it with no breath between the two, and the chant
@@ -708,7 +737,9 @@ out.forEach((b, i) => { b.id = 'b' + (i + 1); });
  */
 const BY_HAND = {
   rip: { b2: { pickup: 1 } },
-  izna: { b8: { before: 1 }, b10: { drop: 2 } },
+  izna: {
+    b8: { before: 1 }, b10: { drop: 2 }, b14: { before: 1 }, b15: { order: [0, 1, 3, 2] },
+  },
   dumbhot: { b3: { before: 1 }, b10: { before: 1 }, b11: { before: 1 } },
   beep: { b5: { before: 1 }, b13: { before: 1 } },
 };
@@ -725,6 +756,17 @@ Object.entries(BY_HAND[name] || {}).forEach(([id, edit]) => {
     const from = b.first + edit.drop;
     if (from > b.last) { console.log(id + ': nothing would be left'); return; }
     Object.assign(b, assemble(b.all, from, b.last), { first: from });
+  }
+  if (edit.order) {
+    const want = edit.order;
+    const ok = want.length === b.lines.length
+      && want.every((n) => Number.isInteger(n) && b.lines[n])
+      && new Set(want).size === want.length;
+    if (!ok) { console.log(id + ': order must name each of its lines once'); return; }
+    b.lines = want.map((n) => b.lines[n]);
+    // Written down, because everything downstream expects a block's lines to
+    // run forwards and this one has been told not to.
+    b.ordered = 1;
   }
   if (edit.pickup) {
     if (!b.first) { console.log(id + ': nothing in front to pick up from'); return; }

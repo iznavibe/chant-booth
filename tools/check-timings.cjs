@@ -119,10 +119,20 @@ want.forEach((song, key) => {
       });
     });
 
-    b.lines.forEach((l, i) => {
-      const prev = b.lines[i - 1];
-      if (prev && l.w[0].t + 0.05 < prev.w[0].t) say(`${b.id}: line${i} starts before line${i - 1}`);
-    });
+    /*
+     * Lines run forwards, unless this block was ordered by hand.
+     *
+     * A cheer held across the line that follows it begins first and would lead
+     * on time alone, and one block is written the other way round on purpose.
+     * The block says so itself, so the exception cannot spread quietly to a
+     * block that simply came out wrong.
+     */
+    if (!b.ordered) {
+      b.lines.forEach((l, i) => {
+        const prev = b.lines[i - 1];
+        if (prev && l.w[0].t + 0.05 < prev.w[0].t) say(`${b.id}: line${i} starts before line${i - 1}`);
+      });
+    }
   });
 });
 
