@@ -151,6 +151,9 @@
   .soft { color: var(--ink-soft); font-size: .92rem; }
   /* The one paragraph on the home screen, so it gets room to be read. */
   .lede { color: var(--ink-soft); font-size: .95rem; line-height: 1.55; }
+  /* What the site is, before how it works. Brighter and on its own, so it is
+     read rather than skimmed past on the way into the paragraph. */
+  .lede.first { color: var(--ink); margin-bottom: 14px; }
 
   /*
    * The two flags, and English as the way back.
@@ -591,11 +594,15 @@
 
   <section id="screen-intro" hidden>
     <div class="card" style="display:flex;flex-direction:column;gap:14px">
-      <p class="lede" data-t="about">
-        We're making fanchant guide videos for izna's songs out of nayas' own
-        voices. Record yours and send it over, and it joins every other naya's
-        on the video until it sounds like a real crowd. Practice with us now,
-        and let's cheer izna on as loud as we can at the concert!
+      <p class="lede first" data-t="about">
+        This is a site where you can practice fanchants and send yours in to be
+        featured in a fanchant guide video.
+      </p>
+      <p class="lede" data-t="aboutMore">
+        The videos are made out of nayas' own voices. Record yours and send it
+        over, and it joins every other naya's until it sounds like a real
+        crowd. Practice with us now, and let's cheer izna on as loud as we can
+        at the concert!
       </p>
       <h2 data-t="before">Before you start</h2>
       <ol class="steps">
@@ -874,10 +881,12 @@ const $ = (id) => document.getElementById(id);
 
 const EN = {
   pick: 'Pick a song',
-  about: "We're making fanchant guide videos for izna's songs out of nayas' own "
-    + "voices. Record yours and send it over, and it joins every other naya's on "
-    + "the video until it sounds like a real crowd. Practice with us now, and "
-    + "let's cheer izna on as loud as we can at the concert!",
+  about: 'This is a site where you can practice fanchants and send yours in to '
+    + 'be featured in a fanchant guide video.',
+  aboutMore: "The videos are made out of nayas' own voices. Record yours and send "
+    + "it over, and it joins every other naya's until it sounds like a real crowd. "
+    + "Practice with us now, and let's cheer izna on as loud as we can at the "
+    + 'concert!',
   before: 'Before you start',
   s1: 'Go somewhere quiet, and keep the mic close to your mouth.',
   s2: 'Press Guide to hear it, then Record and sing along.',
@@ -973,10 +982,11 @@ const EN = {
 
 const KO = {
   pick: '곡 고르기',
-  about: '나야들의 목소리로 이즈나 노래의 응원법 가이드 영상을 만드는 '
-    + '프로젝트예요. 녹음해서 보내주시면 다른 나야들의 목소리와 하나로 합쳐져, '
-    + '실제 응원처럼 영상에 담겨요. 미리 같이 연습해두고 이즈나 콘서트에서 '
-    + '크게 응원해요!',
+  about: '응원법을 연습하고, 직접 녹음한 목소리를 보내서 응원법 가이드 영상에 '
+    + '참여할 수 있는 사이트예요.',
+  aboutMore: '영상은 나야들의 목소리로 만들어요. 녹음해서 보내주시면 다른 나야들의 '
+    + '목소리와 하나로 합쳐져, 실제 응원처럼 영상에 담겨요. 미리 같이 연습해두고 '
+    + '이즈나 콘서트에서 크게 응원해요!',
   before: '시작하기 전에',
   s1: '조용한 곳에서 마이크를 입 가까이 대주세요.',
   s2: '가이드를 눌러 들어보고, 녹음을 눌러 따라 외쳐주세요.',
@@ -1068,9 +1078,10 @@ const KO = {
 };
 const JA = {
   pick: '曲を選ぶ',
-  about: 'ナヤの声でiznaの曲のファンチャントガイド映像をつくるプロジェクトです。'
-    + '録音して送ってくれたら、ほかのナヤの声と一つに重なって、'
-    + '本物のファンチャントみたいに映像に入ります。'
+  about: 'ファンチャントを練習して、録音した声を送るとファンチャントガイド映像に'
+    + '参加できるサイトです。',
+  aboutMore: '映像はナヤの声でつくります。録音して送ってくれたら、ほかのナヤの声と'
+    + '一つに重なって、本物のファンチャントみたいに映像に入ります。'
     + 'いっしょに練習して、iznaのコンサートで思いきり応援しましょう！',
   before: 'はじめる前に',
   s1: '静かなところで、マイクを口の近くに持ってください。',
