@@ -624,6 +624,12 @@
         under the count; where there is none, the count is silent.
       </p>
       <button class="ghost full" id="guide-edit" hidden>Retime this block's guide</button>
+      <div class="editRow" id="copy-row" hidden>
+        <span class="muted" style="flex:1">Take everything from</span>
+        <select id="copy-from" style="font:inherit;color:var(--ink);background:var(--sunk);
+                border:1px solid var(--edge);border-radius:10px;padding:8px 10px"></select>
+        <button class="ghost" id="copy-do">Copy</button>
+      </div>
       <canvas id="wave" hidden style="width:100%;height:156px;touch-action:none;
               border-radius:12px;background:var(--sunk);cursor:grab"></canvas>
       <div class="editRow" id="wave-tools" hidden>
@@ -2552,8 +2558,11 @@ let wordSplits = {};
 function applySplits() {
   CHANTS.forEach((b) => b.lines.forEach((l, li) => {
     const made = [];
-    l.w.forEach((w) => {
-      const said = wordSplits[wordKey(b.id, li, made.length)];
+    // Counted in whole words, which is what the key means. Counting the pieces
+    // instead put every word after the first break under the wrong name, and a
+    // line with two breaks in it only ever took the first.
+    l.w.forEach((w, wi) => {
+      const said = wordSplits[wordKey(b.id, li, wi)];
       const parts = said && said.k === w.k ? said.parts : null;
       if (!parts) { made.push(w); return; }
       parts.forEach((part) => made.push({
@@ -3165,6 +3174,7 @@ function showPlacing() {
     $(id).hidden = !on;
   });
   if (typeof showWord === 'function') showWord();
+  if (typeof showCopy === 'function') showCopy();
 
   // Retiming needs guide mode, a guide to retime, and nothing already open.
   // The panel around it is hidden from a fan anyway; this is so that stays
@@ -3642,6 +3652,110 @@ $('wave').addEventListener('keydown', (e) => {
 });
 
 /**
+ * Take another block's settings, for a passage the song sings twice.
+ *
+ * These songs repeat: the same line, the same answer, the same guide clip that
+ * would be cut from the same seconds. Having placed it once, the second time
+ * is the same work again for the same result. So a block can be given
+ * everything another one has: the guide it plays and where its first word
+ * sits, how long it runs, and the timing of any word the two have in common.
+ *
+ * Word for word, by what the words say. Two blocks of the same passage agree
+ * about their words and a correction means the same thing in both; where they
+ * differ, nothing is carried over rather than guessed at.
+ */
+function blocksWithGuides() {
+  return CHANTS.filter((b, i) => guideAt[b.id] && i !== at);
+}
+
+function showCopy() {
+  const on = GUIDE && CHANTS.length && !placing;
+  const from = blocksWithGuides();
+  $('copy-row').hidden = !on || !from.length;
+  if ($('copy-row').hidden) return;
+  const held = $('copy-from').value;
+  $('copy-from').innerHTML = from
+    .map((b) => `<option value="${b.id}">Block ${CHANTS.indexOf(b) + 1}</option>`)
+    .join('');
+  if (from.some((b) => b.id === held)) $('copy-from').value = held;
+}
+
+$('copy-do').addEventListener('click', async () => {
+  const fromId = $('copy-from').value;
+  const from = CHANTS.find((b) => b.id === fromId);
+  const to = CHANTS[at];
+  if (!from || !to || !CAN_UPLOAD) return;
+  // Held now: rebuilding the line replaces these objects, so asking afterwards
+  // which block it was would find the old one nowhere.
+  const fromNo = CHANTS.indexOf(from) + 1;
+  $('copy-do').disabled = true;
+  $('guide-note').textContent = 'Copying…';
+  try {
+    // The guide is the same file and the same mark; the window around it is
+    // this block's, since the two need not be the same length.
+    const said = guideAt[from.id];
+    const mark = said.mark === undefined ? said.from : said.mark;
+    if (blockEdits[from.id]) blockEdits[to.id] = { ...blockEdits[from.id] };
+    else delete blockEdits[to.id];
+    guideAt[to.id] = { file: said.file, ...windowFor(mark, to, said.run) };
+
+    /*
+     * Anything this block had of its own goes, rather than being merged into.
+     * Half of one block's timings under half of another's is a line neither of
+     * them sings, and the point of copying is to hear the two the same.
+     */
+    const mine = (id, map) => Object.keys(map).filter((k) => k.startsWith(id + ':'));
+    mine(to.id, wordSplits).forEach((k) => delete wordSplits[k]);
+    mine(to.id, wordEdits).forEach((k) => delete wordEdits[k]);
+
+    /*
+     * The breaks first, because a timing for TIMEBOMB has nowhere to sit until
+     * the block agrees that TIMEBOMB is a word. Matched against the song file
+     * rather than the blocks in hand, since the blocks in hand are already
+     * broken and a break is named by where the whole word sat.
+     */
+    const fileFor = (id) => builtChants.find((c) => c.id === id);
+    const there = fileFor(to.id);
+    let splits = 0;
+    mine(from.id, wordSplits).forEach((key) => {
+      const [, li, i] = key.split(':');
+      const said = wordSplits[key];
+      const w = there && there.lines[+li] && there.lines[+li].w[+i];
+      if (!w || w.k !== said.k) return;
+      wordSplits[wordKey(to.id, +li, +i)] = JSON.parse(JSON.stringify(said));
+      splits += 1;
+    });
+    rebuildLine();
+
+    // Now the timings, word for word by what each word says.
+    const here = CHANTS.find((b) => b.id === to.id);
+    let words = 0;
+    from.lines.forEach((l, li) => l.w.forEach((w, wi) => {
+      const edit = wordEdits[wordKey(from.id, li, wi)];
+      const at2 = here.lines[li] && here.lines[li].w[wi];
+      if (!edit || !at2 || at2.k !== edit.k) return;
+      wordEdits[wordKey(to.id, li, wi)] = { k: edit.k, t: edit.t, d: edit.d };
+      words += 1;
+    }));
+
+    await writeGuideMap();
+    rebuildLine();
+    goto(at);
+    $('guide-note').textContent =
+      `Block ${at + 1} now plays block ${fromNo}'s guide`
+      + (words || splits
+        ? `, with ${words} word timing${words === 1 ? '' : 's'}`
+          + (splits ? ` and ${splits} split word${splits === 1 ? '' : 's'}.` : '.')
+        : '.');
+  } catch (err) {
+    $('guide-note').textContent = locked(err.message)
+      ? 'Guides are locked. Paste the service_role key above to write them.'
+      : 'That did not save: ' + err.message;
+  }
+  $('copy-do').disabled = false;
+});
+
+/**
  * Open the guide this block already has, to move it.
  *
  * A guide is a file plus a mark, and until now the only way to the mark was to
@@ -3854,7 +3968,7 @@ function goto(i) {
   $('meter-fill').style.width = '0%';
   buttons(true);
   showTimes();
-  if (GUIDE) { picked = null; showPlacing(); showRig(); showSpan(); showWord(); }
+  if (GUIDE) { picked = null; showPlacing(); showRig(); showSpan(); showWord(); showCopy(); }
 }
 
 /**

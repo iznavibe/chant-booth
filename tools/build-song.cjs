@@ -67,7 +67,26 @@ const NOT_CHANTS = {
   timebomb: ['(Tic tic tic tic boom)'],
 };
 
-const notAChant = (NOT_CHANTS[name] || []).map((t) => t.replace(/\s+/g, ''));
+/*
+ * And a line the crowd answers that carries no mark at all.
+ *
+ * TIMEBOMB brackets its 너와 나의 TIMEBOMB the first two times the crowd
+ * answers it and not the last two, so those two passages had no chant in them
+ * and never became blocks. The line is the same one either way.
+ *
+ * Matched on the whole line, so it takes only the bare answer and not the
+ * longer lines that happen to contain the same words: izna's own
+ * "너와 나의 TIMEBOMB (너와 나의 TIMEBOMB)" is a different line and already
+ * marked, and so is the closing one that says it three times.
+ */
+const ALSO_CHANTS = {
+  timebomb: ['너와 나의 TIMEBOMB'],
+};
+
+// Spaces removed, so a line is recognised however it happens to be spaced.
+const tight = (t) => t.replace(/\s+/g, '');
+const notAChant = (NOT_CHANTS[name] || []).map(tight);
+const isAChant = (ALSO_CHANTS[name] || []).map(tight);
 
 function chantFlags(lines, fanchant) {
   const want = (fanchant.baseColor || '').toLowerCase();
@@ -75,9 +94,13 @@ function chantFlags(lines, fanchant) {
   const flags = [];
   let inside = false;
   lines.forEach((sylls) => {
-    const said = sylls.map((u) => u.text).join('').replace(/\s+/g, '');
+    const said = tight(sylls.map((u) => u.text).join(''));
     if (notAChant.includes(said)) {
       sylls.forEach(() => flags.push(false));
+      return;
+    }
+    if (isAChant.includes(said)) {
+      sylls.forEach(() => flags.push(true));
       return;
     }
     const spoken = sylls.some(painted);
