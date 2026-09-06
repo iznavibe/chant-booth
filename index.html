@@ -2943,20 +2943,78 @@ function pruneSplits() {
   });
 }
 
+function settingsNow() {
+  return JSON.stringify({
+    ...guideAt, [EDITS]: blockEdits, [WORDS]: wordEdits, [SPLIT]: wordSplits,
+  });
+}
+
 async function writeGuideMap() {
   pruneSplits();
   pruneWordEdits();
+  const said = settingsNow();
   await put(
     'guides',
     `${SONG}/manifest.json`,
-    new Blob([JSON.stringify({
-      ...guideAt, [EDITS]: blockEdits, [WORDS]: wordEdits, [SPLIT]: wordSplits,
-    })],
-      { type: 'application/json' }),
+    new Blob([said], { type: 'application/json' }),
     'application/json',
     true
   );
+  // Written, so nothing here is waiting to be. Read again rather than reused,
+  // since pruning above may have dropped something since.
+  saved = settingsNow();
 }
+
+/*
+ * Keep what has been set, without being asked to.
+ *
+ * A word nudged a hundredth at a time is a long quiet piece of work with no
+ * obvious moment to press Save, and the settings live in memory until someone
+ * does. A reload loses them, and so does a stray press of a button that
+ * reloads. So the settings are watched, and written a moment after they stop
+ * changing.
+ *
+ * Compared as a whole rather than hooked into each place that edits them:
+ * there are a dozen of those, they are the kind of thing that gets added, and
+ * one that forgot to say it had changed would lose exactly the work this is
+ * meant to keep. What it costs is one small comparison a second.
+ */
+let saved = null;
+let saving = false;
+let settled = 0;
+
+async function keepSettings() {
+  // A placement in progress is no reason to hold off: it is not part of what
+  // is written here, and word timings set while one is open want keeping too.
+  if (!GUIDE || !CAN_UPLOAD || saving) return;
+  const now = settingsNow();
+  // Nothing to compare against until the first look, which is the state as
+  // loaded and not something to write back.
+  if (saved === null) { saved = now; return; }
+  if (now === saved) { settled = 0; return; }
+  // Left alone for a moment first, so a held-down arrow is one write, not ten.
+  settled += 1;
+  if (settled < 2) return;
+  settled = 0;
+  saving = true;
+  try {
+    await writeGuideMap();
+    const note = $('guide-note');
+    if (note) note.textContent = 'Saved.';
+  } catch (err) {
+    const note = $('guide-note');
+    if (note) {
+      note.textContent = locked(err.message)
+        ? 'Guides are locked, so nothing here is being kept. Paste the service_role key above.'
+        : 'Could not save that: ' + err.message;
+    }
+    // Not retried every second against a wall; the next change asks again.
+    saved = settingsNow();
+  }
+  saving = false;
+}
+
+setInterval(keepSettings, 1000);
 
 /**
  * Put a cut of izna's own fanchant video in as the guide.
@@ -2976,6 +3034,18 @@ async function writeGuideMap() {
  * than a re-encode.
  */
 let placing = null;   // {file, buf, from, peaks}
+
+/*
+ * Placements set down but not yet saved, by block.
+ *
+ * Placing a guide is minutes of work that lives nowhere but this variable:
+ * the file read and decoded, the window dragged until the marks sit on the
+ * shouts. Stepping to the next block used to throw it away, and one press of
+ * the wrong arrow undid all of it with nothing to go back to. They are kept
+ * here instead until they are saved or replaced, so the arrows are just the
+ * arrows again.
+ */
+const held = {};
 
 /** Peaks at one pixel per column, so the drawing is cheap to repaint. */
 function peaksOf(buf, columns, fromSec, spanSec) {
@@ -3279,12 +3349,14 @@ async function uploadGuide(e) {
     const Off = window.OfflineAudioContext || window.webkitOfflineAudioContext;
     const buf = await new Off(1, 1, 44100).decodeAudioData(await file.arrayBuffer());
     const b = CHANTS[at];
+    delete held[b.id];
     placing = { file, buf, mark: buf.duration >= 45 ? b.at : 0, run: PRE, peaks: null };
     showPlacing();
     $('guide-note').textContent = buf.duration >= 45
       ? 'Whole song. Line one block up, then place every block from it.'
       : 'Drag the pink window so the marks sit on the shouts.';
   } catch (err) {
+    delete held[CHANTS[at].id];
     placing = null;
     showPlacing();
     $('guide-note').textContent = 'That file could not be read. An mp3 or m4a works best.';
@@ -3875,6 +3947,7 @@ $('guide-save').addEventListener('click', async () => {
       [b.id]: { file: holds, ...windowFor(placing.mark, b, placing.run) },
     });
     $('guide-note').textContent = `Block ${at + 1} done. Press Guide to hear it as a fan will.`;
+    delete held[b.id];
     placing = null;
     showPlacing();
   } catch (err) {
@@ -3904,6 +3977,7 @@ $('guide-all').addEventListener('click', async () => {
     $('guide-note').textContent =
       `All ${CHANTS.length} blocks placed, ${shift >= 0 ? '+' : ''}${shift.toFixed(2)}s off the ` +
       'timings. Press Guide on any block.';
+    CHANTS.forEach((x) => delete held[x.id]);
     placing = null;
     showPlacing();
   } catch (err) {
@@ -3954,8 +4028,12 @@ function goto(i) {
   if (busy) return;
   stopSweep();
   stopPlaying();
-  if (i !== at) { placing = null; showPlacing(); }
-  at = Math.max(0, Math.min(CHANTS.length - 1, i));
+  const to = Math.max(0, Math.min(CHANTS.length - 1, i));
+  if (to !== at) {
+    if (placing) held[CHANTS[at].id] = placing;
+    placing = held[CHANTS[to].id] || null;
+  }
+  at = to;
   const c = CHANTS[at];
   paintChant(c);
   pips();
