@@ -503,6 +503,20 @@
    * second thing happening at the moment there should only be one.
    */
   .stage { box-shadow: var(--shadow), 0 0 0 8px rgba(253, 83, 143, calc(var(--warm, 0) * .45)); }
+  /*
+   * And the moment itself, which the rise cannot say on its own.
+   *
+   * A ring that grows all the way to full says a shout is coming and never
+   * says it has arrived: there is no instant in a ramp. So the rise stops well
+   * short, and the moment is a jump to full with a pulse thrown off it. The
+   * contrast is what marks the instant, not the brightness.
+   */
+  .stage.go { animation: go .4s cubic-bezier(.2, .9, .3, 1); }
+  @keyframes go {
+    0%   { box-shadow: var(--shadow), 0 0 0 0 var(--pink); }
+    100% { box-shadow: var(--shadow), 0 0 0 18px rgba(253, 83, 143, 0); }
+  }
+  @media (prefers-reduced-motion: reduce) { .stage.go { animation: none; } }
 
   /* What the mic is actually hearing, so a dead mic is obvious at a glance. */
   .level { height: 6px; border-radius: 99px; background: var(--sunk); overflow: hidden; margin-top: 10px; }
@@ -2711,6 +2725,20 @@ function stopSweep() {
   $('stage').style.setProperty('--warm', '0');
 }
 
+/**
+ * The pulse thrown off the ring at the instant the shouting starts.
+ *
+ * Taken off and put back with a reflow between, because an animation already
+ * running does not start again just because its class was added a second
+ * time, and two answers can be a second apart.
+ */
+function flare() {
+  const el = $('stage');
+  el.classList.remove('go');
+  void el.offsetWidth;
+  el.classList.add('go');
+}
+
 /*
  * How long the ring takes to come up, and to go again.
  *
@@ -2722,13 +2750,23 @@ function stopSweep() {
 const WARM_UP = 1;
 const COOL_OFF = 0.35;
 
+/*
+ * How far up the ring gets before the shouting starts.
+ *
+ * Not far. It is a warning that something is coming, and if it arrives at full
+ * before the moment does then the moment has nothing left to be: the ring was
+ * already as bright as it gets. Stopping at a third leaves the jump to do the
+ * work.
+ */
+const WARM_PEAK = 0.32;
+
 /**
  * How lit the ring should be at a given second of the block.
  *
- * Nothing until the last second before a stretch of shouting; then up, held
- * for as long as the shouting lasts, and away. Squared on the way up so it
- * begins almost invisibly and arrives with intent, instead of sitting half on
- * for half a second, which reads as a glow rather than as a warning.
+ * Nothing until the last second before a stretch of shouting; then part way
+ * up, full the instant it starts, held while it lasts, and away. Squared on
+ * the way up so it begins almost invisibly rather than sitting half on, which
+ * reads as a glow instead of as a warning.
  */
 function ringAt(runs, pos) {
   for (const r of runs) {
@@ -2737,7 +2775,7 @@ function ringAt(runs, pos) {
     if (pos >= r.at) return 1;
     if (pos > r.at - WARM_UP) {
       const up = (pos - (r.at - WARM_UP)) / WARM_UP;
-      return up * up;
+      return up * up * WARM_PEAK;
     }
     return 0;
   }
@@ -2799,6 +2837,7 @@ function sweep(c, onDone, opts) {
     const inRun = runs.findIndex((r) => el >= PRE + r.at && el <= PRE + r.until);
     if (inRun >= 0 && inRun !== told) {
       told = inRun;
+      flare();
       setStatus(t('shout'), true);
     }
 
