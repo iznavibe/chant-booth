@@ -2305,6 +2305,23 @@ function reading(w) {
 }
 
 /**
+ * Whether the row under the words is telling this reader anything.
+ *
+ * It exists so a fan can read a line written in a script they do not read.
+ * Someone reading in Korean already reads the Hangul, so under a Korean song
+ * the row is that same line spelled out in Latin, which is a third script
+ * nobody asked for and a line of clutter over every block. Under a Japanese
+ * song it is the row that does the work, and it stays.
+ *
+ * Asked of the song rather than of each word, so the row is either there or
+ * not: half a row lines up with nothing above it.
+ */
+function readingWanted() {
+  if (LANG !== 'ko') return true;
+  return CHANTS.some((b) => b.lines.some((l) => l.w.some((w) => w.ko)));
+}
+
+/**
  * How far the colour has run across one word, as a percentage of it.
  *
  * A word is often several steps of the video welded into one thing to read:
@@ -2339,6 +2356,7 @@ function fillOf(w, beats, el) {
 function paintChant(b) {
   flatWords = [];
   const rows = [];
+  const wantRead = readingWanted();
   for (const line of b.lines) {
     const kr = [];
     const ro = [];
@@ -2347,7 +2365,7 @@ function paintChant(b) {
       flatWords.push(w);
       const cls = 'w' + (w.c ? ' c' : '') + (w.s ? ' s' : '');
       kr.push(`<span class="${cls}" data-i="${i}" data-row="k">${esc(w.k)}</span>`);
-      const say = reading(w);
+      const say = wantRead ? reading(w) : '';
       if (say) ro.push(`<span class="${cls}" data-i="${i}" data-row="r">${esc(say)}</span>`);
     }
     rows.push(
