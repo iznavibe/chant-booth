@@ -43,6 +43,19 @@ if (!KEY) {
   process.exit(1);
 }
 
+/*
+ * A service_role key is a JWT, three dot-separated parts, or one of the newer
+ * sb_secret_ ones. Anything else is the instructions pasted in place of the
+ * key, and saying so here is kinder than a 403 from storage a moment later.
+ */
+const LOOKS_LIKE_A_KEY = /^(ey[\w-]*\.[\w-]+\.[\w-]+|sb_secret_[\w-]+)$/;
+if (!LOOKS_LIKE_A_KEY.test(KEY)) {
+  console.error('That does not look like a service_role key.\n'
+    + '  Supabase dashboard, Project Settings, API keys, the service_role one.\n'
+    + '  It is long, and starts with "ey" or "sb_secret_".');
+  process.exit(1);
+}
+
 const head = { apikey: KEY, Authorization: 'Bearer ' + KEY };
 
 /** Everything under a prefix, walking into folders as it finds them. */
@@ -192,6 +205,21 @@ async function remove(paths) {
   for (let i = 0; i < done.length; i += 50) await remove(done.slice(i, i + 50));
   console.log(`Deleted ${done.length} files from ${bucket}/.`);
 })().catch((e) => {
-  console.error('\n' + e.message);
-  process.exit(1);
+  /*
+   * Said in words, and without leaving mid-flight.
+   *
+   * Exiting while a request is still closing takes libuv down with an
+   * assertion, which buries the reason underneath it. The exit code is set
+   * instead and node leaves when it is ready.
+   */
+  const said = String(e.message || e);
+  if (/Invalid Compact JWS|AccessDenied|Unauthorized|\b40[13]\b/.test(said)) {
+    console.error('\nStorage refused that key.\n'
+      + '  It has to be the service_role key, not the publishable one:\n'
+      + '  Supabase dashboard, Project Settings, API keys.\n'
+      + '  Nothing was downloaded and nothing was deleted.');
+  } else {
+    console.error('\n' + said + '\n  Nothing was deleted.');
+  }
+  process.exitCode = 1;
 });
