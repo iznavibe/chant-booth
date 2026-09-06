@@ -1373,7 +1373,16 @@ const guideUrl = (file) => `${CFG.url}/storage/v1/object/public/guides/${SONG}/$
 async function guideBuffer(file) {
   if (guideFiles.has(file)) return guideFiles.get(file);
   try {
-    const res = await fetch(guideUrl(file), { cache: 'force-cache' });
+    /*
+     * Asked for again each session rather than taken from the cache on trust.
+     *
+     * A guide is replaced under the name it already had, so a cached copy and
+     * the current one look identical from here. Storage sends an ETag with
+     * every file, and revalidating costs a round trip and no bytes when
+     * nothing has changed: the alternative was a guide re-recorded weeks ago
+     * that some phones still play the old take of, with no way to tell.
+     */
+    const res = await fetch(guideUrl(file), { cache: 'no-cache' });
     if (!res.ok) throw new Error(res.status);
     const Off = window.OfflineAudioContext || window.webkitOfflineAudioContext;
     const buf = await new Off(1, 1, 44100).decodeAudioData(await res.arrayBuffer());
@@ -1928,6 +1937,46 @@ function liftFor(buf) {
  * playback reads as together on one and behind on the other. Whatever waits on
  * being heard waits this much longer.
  */
+/*
+ * Start the sound card while there is a gesture to do it under.
+ *
+ * A context is created suspended, and until it has actually rendered it says
+ * the speaker costs nothing: outputLatency reads 0. The first guide of the
+ * session was therefore scheduled as though the sound came out the instant it
+ * was written, and the words ran ahead of it; by the second press the context
+ * was running and said what it really costs, and the same guide was in time.
+ *
+ * So the context is started at the door, on the press that opens the song,
+ * with a moment of silence to get the render loop going. Nothing is awaited:
+ * resume can sit unanswered until the browser feels like it, and this is a
+ * head start, not a step anybody waits for.
+ */
+function warm() {
+  const c = audio();
+  try { c.resume(); } catch (e) { /* the next gesture will do it */ }
+  try {
+    const quiet = c.createBufferSource();
+    quiet.buffer = c.createBuffer(1, 128, c.sampleRate);
+    quiet.connect(c.destination);
+    quiet.start();
+  } catch (e) { /* nothing lost: outLag falls back to what it can read */ }
+}
+
+/**
+ * Wait, briefly, for the context to be able to say what the speaker costs.
+ *
+ * Only where there is something to wait for. Safari has no outputLatency at
+ * all and answers from its clocks instead, so waiting on a number it never
+ * reports would delay every guide it plays by a fifth of a second.
+ */
+async function lagReady() {
+  const c = audio();
+  if (typeof c.outputLatency !== 'number') return;
+  for (let n = 0; n < 10 && c.state === 'running' && !(c.outputLatency > 0); n += 1) {
+    await new Promise((go) => setTimeout(go, 20));
+  }
+}
+
 function outLag() {
   if (LOOK !== null) return LOOK;
   const c = audio();
@@ -2719,6 +2768,10 @@ async function listen() {
     if (buf) {
       // A voice guide beats a click: it carries the words, not just the beat.
       setStatus('');
+      // Asked before the sound is scheduled, not after: the wait is for the
+      // context to be able to say what the speaker costs, and anything
+      // scheduled first would already be on its way while it answered.
+      await lagReady();
       playWindow(buf, where.from, where.len, where.lead || 0);
       // The words wait for the sound to be out of the speaker, not merely sent.
       const after = (AHEAD + outLag() + (where.hold > 0 ? where.hold : 0)) * 1000;
@@ -4224,7 +4277,7 @@ $('begin').addEventListener('click', () => {
   // line breaks and control characters do not come with it.
   handle = $('handle').value.replace(/\p{C}/gu, ' ').trim().slice(0, 40);
   remember('handle', handle);
-  audio(); // created inside the gesture, so later clicks are allowed to sound
+  warm(); // created and started inside the gesture, so later clicks may sound
   // A shared link already named a song; anyone else chooses one.
   if (SONG) loadSong(SONG);
   else showPicker();
@@ -4270,6 +4323,7 @@ async function playTake() {
    * trying to hear. Only the sweep runs on a timer, because it is watched
    * rather than heard and a frame either way does not show.
    */
+  await lagReady();
   const opens = ctx.currentTime + AHEAD;
   const enter = opens + (buf && where.hold > 0 ? where.hold : 0);
   if (buf) {
