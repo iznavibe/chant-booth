@@ -67,8 +67,8 @@
    "name": "timebomb",
    "title": "TIMEBOMB",
    "blocks": 8,
-   "shouts": 28,
-   "minutes": 1.5
+   "shouts": 26,
+   "minutes": 1.3
   }
  ]
 }

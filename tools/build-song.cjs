@@ -50,12 +50,36 @@ const p = JSON.parse(fs.readFileSync(src, 'utf8'));
  * The state still carries across lines either way, since a bracket opened on
  * an unpainted line can close on a painted one.
  */
+/*
+ * Bracketed, and still not for the crowd.
+ *
+ * Brackets speak for a line the colour says nothing about, which is how most
+ * of the chants in these songs are marked. TIMEBOMB writes "(Tic tic tic tic
+ * boom)" that way and it is izna's line, not an answer: reading it as a chant
+ * gave the block three lines nobody is being asked to shout, ending on one
+ * that is not theirs.
+ *
+ * Named by what the line says rather than where it sits, so it holds wherever
+ * the line appears and does not move when a block does. The closing "(Tic tic
+ * tic tic)" alongside 이즈나야 is a different line and is a chant.
+ */
+const NOT_CHANTS = {
+  timebomb: ['(Tic tic tic tic boom)'],
+};
+
+const notAChant = (NOT_CHANTS[name] || []).map((t) => t.replace(/\s+/g, ''));
+
 function chantFlags(lines, fanchant) {
   const want = (fanchant.baseColor || '').toLowerCase();
   const painted = (s) => !!s.baseColor && s.baseColor.toLowerCase() === want;
   const flags = [];
   let inside = false;
   lines.forEach((sylls) => {
+    const said = sylls.map((u) => u.text).join('').replace(/\s+/g, '');
+    if (notAChant.includes(said)) {
+      sylls.forEach(() => flags.push(false));
+      return;
+    }
     const spoken = sylls.some(painted);
     sylls.forEach((s) => {
       if (s.text.includes('(')) inside = true;
