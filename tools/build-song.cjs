@@ -806,6 +806,7 @@ const BY_HAND = {
     b16: { order: [0, 1, 3, 2] },
   },
   beep: { b5: { before: 1 }, b13: { before: 1 } },
+  metronome: { b2: { before: 1 } },
 };
 
 Object.entries(BY_HAND[name] || {}).forEach(([id, edit]) => {
