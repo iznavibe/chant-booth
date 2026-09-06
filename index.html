@@ -247,7 +247,6 @@
     padding: 26px 20px;
     text-align: center;
     box-shadow: var(--shadow);
-    transition: box-shadow .16s ease-out;
   }
   /* A block as it reads in the video: the original, its romaji underneath,
      and the shouted parts standing out from the sung ones. */
@@ -493,24 +492,17 @@
   }
 
   /*
-   * Two ways of saying it is your part, for two lengths of part.
+   * The ring, and how far up it is.
    *
-   * A quick answer gets a ring that flares and goes, which is over about when
-   * the answer is. A long one, or several close enough together to be one
-   * stretch of shouting, gets a ring that stays up until it ends: a flare
-   * would have faded while the fan was still going, which is the moment they
-   * most need to see that it is still theirs.
+   * Nothing sounds while the mic is open, so this is the only warning there
+   * is, and it used to arrive at full from nothing: by the time it said now,
+   * now had started. It comes up over the second before instead.
+   *
+   * The ring itself never changes size. Only how strongly it is there. Growing
+   * the spread as well made the card look like it was breathing, which is a
+   * second thing happening at the moment there should only be one.
    */
-  .stage.go { animation: go .45s ease-out; }
-  @keyframes go {
-    0%   { box-shadow: var(--shadow), 0 0 0 0 var(--pink); }
-    100% { box-shadow: var(--shadow), 0 0 0 16px rgba(253, 83, 143, 0); }
-  }
-  .stage.shout { box-shadow: var(--shadow), 0 0 0 8px rgba(253, 83, 143, .45); }
-  @media (prefers-reduced-motion: reduce) {
-    .stage { transition: none; }
-    .stage.go { animation: none; }
-  }
+  .stage { box-shadow: var(--shadow), 0 0 0 8px rgba(253, 83, 143, calc(var(--warm, 0) * .45)); }
 
   /* What the mic is actually hearing, so a dead mic is obvious at a glance. */
   .level { height: 6px; border-radius: 99px; background: var(--sunk); overflow: hidden; margin-top: 10px; }
@@ -2716,34 +2708,41 @@ function showTimes() {
 let sweepRun = 0;
 function stopSweep() {
   sweepRun += 1;
-  $('stage').classList.remove('shout');
-}
-
-/**
- * The ring that flares once, for an answer that is over quickly.
- *
- * Taken off and put back with a reflow between, because an animation already
- * running does not start again just because its class was added a second
- * time, and two answers can be a second apart.
- */
-function flare() {
-  const el = $('stage');
-  el.classList.remove('go');
-  void el.offsetWidth;
-  el.classList.add('go');
+  $('stage').style.setProperty('--warm', '0');
 }
 
 /*
- * How long a stretch of shouting has to be before the ring is held rather
- * than flared.
+ * How long the ring takes to come up, and to go again.
  *
- * The flare lasts about half a second. Anything shorter than this is over
- * while it is still going, so flaring says the whole of it; anything longer
- * and the flare would fade with the fan still shouting. Across the ten songs
- * this holds for the roll calls, the long cheers, and runs like DUMB HOT's
- * "wow!" into 鼻 高々 に swear, and flares for the two hundred quick answers.
+ * A second to rise, the same beat the count-in already takes, so the two say
+ * the same thing in the same time and a fan who has met one knows the other.
+ * It leaves quickly, because by then the shouting is over and there is nothing
+ * left to warn about.
  */
-const HOLD_OVER = 2;
+const WARM_UP = 1;
+const COOL_OFF = 0.35;
+
+/**
+ * How lit the ring should be at a given second of the block.
+ *
+ * Nothing until the last second before a stretch of shouting; then up, held
+ * for as long as the shouting lasts, and away. Squared on the way up so it
+ * begins almost invisibly and arrives with intent, instead of sitting half on
+ * for half a second, which reads as a glow rather than as a warning.
+ */
+function ringAt(runs, pos) {
+  for (const r of runs) {
+    if (pos > r.until + COOL_OFF) continue;
+    if (pos >= r.until) return Math.max(0, 1 - (pos - r.until) / COOL_OFF);
+    if (pos >= r.at) return 1;
+    if (pos > r.at - WARM_UP) {
+      const up = (pos - (r.at - WARM_UP)) / WARM_UP;
+      return up * up;
+    }
+    return 0;
+  }
+  return 0;
+}
 
 function sweep(c, onDone, opts) {
   const live = !!(opts && opts.live);
@@ -2767,9 +2766,8 @@ function sweep(c, onDone, opts) {
     if (last && w.t <= last.until + 0.3) last.until = Math.max(last.until, w.t + w.d);
     else runs.push({ at: w.t, until: w.t + w.d });
   });
-  runs.forEach((r) => { r.held = r.until - r.at >= HOLD_OVER; });
-  let shouting = false;
-  let flared = -1;
+  let told = -1;
+  let warm = -1;
   let loudest = 0;
   // Last drawn fill per word, so a frame only touches what moved.
 
@@ -2791,18 +2789,16 @@ function sweep(c, onDone, opts) {
     }
 
     /*
-     * A long stretch keeps the ring up for as long as it lasts; a quick one
-     * flares as it begins and is over before the flare is.
+     * The ring: up before the shouting, held through it, gone after.
      */
-    const inRun = runs.findIndex((r) => el >= PRE + r.at && el <= PRE + r.until);
-    const now = inRun >= 0 && runs[inRun].held;
-    if (now !== shouting) {
-      shouting = now;
-      $('stage').classList.toggle('shout', now);
+    const want = ringAt(runs, el - PRE);
+    if (Math.abs(want - warm) > 0.01) {
+      warm = want;
+      $('stage').style.setProperty('--warm', want.toFixed(3));
     }
-    if (inRun >= 0 && inRun !== flared) {
-      flared = inRun;
-      if (!runs[inRun].held) flare();
+    const inRun = runs.findIndex((r) => el >= PRE + r.at && el <= PRE + r.until);
+    if (inRun >= 0 && inRun !== told) {
+      told = inRun;
       setStatus(t('shout'), true);
     }
 
@@ -2830,7 +2826,7 @@ function sweep(c, onDone, opts) {
     else {
       // Leave the block sung through rather than snapping back to nothing.
       flatNodes.forEach((ns) => ns.forEach((n) => n.classList.remove('now')));
-      $('stage').classList.remove('shout');
+      $('stage').style.setProperty('--warm', '0');
       $('meter-fill').style.width = '0%';
       $('lead').classList.remove('on');
       $('level').hidden = true;
