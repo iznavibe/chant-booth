@@ -663,6 +663,25 @@
         </div>
       </div>
       <button class="ghost full" id="span-save" hidden>Save this block's length</button>
+      <div id="word-row" hidden style="display:flex;flex-direction:column;gap:8px">
+        <span class="muted" id="word-who">Tap a word on the timeline to retime it</span>
+        <div class="editRow" id="word-tools" hidden>
+          <span class="muted" style="flex:1">Starts</span>
+          <button class="ghost icon" id="wt-less">-</button>
+          <span class="at" id="wt-at">0.00s</span>
+          <button class="ghost icon" id="wt-more">+</button>
+        </div>
+        <div class="editRow" id="word-tools2" hidden>
+          <span class="muted" style="flex:1">Lasts</span>
+          <button class="ghost icon" id="wd-less">-</button>
+          <span class="at" id="wd-at">0.00s</span>
+          <button class="ghost icon" id="wd-more">+</button>
+        </div>
+        <div class="row" id="word-acts" hidden>
+          <button class="ghost" id="word-reset">Back to the video</button>
+          <button class="primary" id="word-save">Save the words</button>
+        </div>
+      </div>
       <div class="row" id="guide-acts" hidden>
         <button class="ghost" id="guide-hear">Play</button>
         <button class="primary" id="guide-save">Save this block</button>
@@ -2495,6 +2514,57 @@ function windowFor(mark, b, run) {
 const EDITS = '_blocks';
 let blockEdits = {};
 
+/*
+ * And its own opinion about when a single word is sung.
+ *
+ * The words are swept on the video's timings, which are right nearly always.
+ * Where they are not, the colour arrives at a word before anybody sings it, or
+ * sits on one long after, and a fan following it comes in wrong. That is worth
+ * being able to correct without going back to the project, since it is the
+ * booth that has to be followed.
+ *
+ * Held against the word's own text as well as its place, so an edit made
+ * before a rebuild cannot land on whatever word happens to sit at that
+ * position afterwards. A word that has moved on is simply left alone.
+ */
+const WORDS = '_words';
+let wordEdits = {};
+let builtWords = null;
+
+const wordKey = (blockId, line, i) => `${blockId}:${line}:${i}`;
+
+/** What the song file said, before anything here was applied. */
+function snapshotWords() {
+  builtWords = {};
+  CHANTS.forEach((b) => b.lines.forEach((l, li) => l.w.forEach((w, wi) => {
+    builtWords[wordKey(b.id, li, wi)] = { t: w.t, d: w.d, p: w.p, rp: w.rp, k: w.k };
+  })));
+}
+
+/** Put the stored corrections onto the blocks in memory. */
+function applyWordEdits() {
+  if (!builtWords) return;
+  CHANTS.forEach((b) => b.lines.forEach((l, li) => l.w.forEach((w, wi) => {
+    const key = wordKey(b.id, li, wi);
+    const was = builtWords[key];
+    if (!was) return;
+    const said = wordEdits[key];
+    // Back to what the song file says, then the correction if there is one.
+    w.t = was.t; w.d = was.d; w.p = was.p; w.rp = was.rp;
+    if (!said || said.k !== w.k) return;
+    w.t = said.t;
+    w.d = said.d;
+    /*
+     * A word moved by hand loses the steps it was swept in. Those describe
+     * where the syllables of the original fell, and once the word starts or
+     * lasts something else they describe nothing. Swept evenly instead, which
+     * is what a word with one step has always done.
+     */
+    delete w.p;
+    delete w.rp;
+  })));
+}
+
 function spanOf(b) {
   const said = blockEdits[b.id];
   return Math.max(0.3, b.dur + ((said && said.out) || 0));
@@ -2514,8 +2584,11 @@ async function loadGuideMap() {
     if (!res.ok) return;
     const said = await res.json();
     blockEdits = said[EDITS] || {};
+    wordEdits = said[WORDS] || {};
     guideAt = said;
     delete guideAt[EDITS];
+    delete guideAt[WORDS];
+    applyWordEdits();
   } catch (e) { /* no guides yet is a normal state */ }
 }
 
@@ -2755,11 +2828,32 @@ async function saveGuide(c, blob, mime) {
 }
 
 /** The map of block to file and window, written after any change. */
+/*
+ * Forget corrections that no longer describe anything.
+ *
+ * A rebuild can add a word, join two, or change what one says, and an edge
+ * written against the old shape then sits in the manifest describing a word
+ * that is not there. It is already ignored when read; this is so it stops
+ * being carried around as well.
+ */
+function pruneWordEdits() {
+  if (!CHANTS.length) return;
+  const real = new Set();
+  CHANTS.forEach((b) => b.lines.forEach((l, li) => l.w.forEach((w, wi) => {
+    real.add(wordKey(b.id, li, wi) + ' ' + w.k);
+  })));
+  Object.keys(wordEdits).forEach((key) => {
+    if (!real.has(key + ' ' + wordEdits[key].k)) delete wordEdits[key];
+  });
+}
+
 async function writeGuideMap() {
+  pruneWordEdits();
   await put(
     'guides',
     `${SONG}/manifest.json`,
-    new Blob([JSON.stringify({ ...guideAt, [EDITS]: blockEdits })], { type: 'application/json' }),
+    new Blob([JSON.stringify({ ...guideAt, [EDITS]: blockEdits, [WORDS]: wordEdits })],
+      { type: 'application/json' }),
     'application/json',
     true
   );
@@ -2822,7 +2916,17 @@ function viewSpan() {
 function viewFrom() {
   if (!placing) return 0;
   const span = viewSpan();
-  return Math.max(0, Math.min(placing.buf.duration - span, placing.mark - span / 2));
+  /*
+   * Around whatever is being worked on.
+   *
+   * Normally the mark, which is the thing being placed. But once a word has
+   * been chosen it is the word: closing in on the mark and then editing a word
+   * four seconds away showed neither of them, which is a drawing of the wrong
+   * part of the song.
+   */
+  const w = typeof pickedWord === 'function' && pickedWord();
+  const on = w ? placing.mark + w.t + w.d / 2 : placing.mark;
+  return Math.max(0, Math.min(placing.buf.duration - span, on - span / 2));
 }
 
 /* The three bands of the timeline, top to bottom. */
@@ -2934,16 +3038,23 @@ function drawWave() {
   // ---- the words, from the mark onwards ----
   g.font = '600 11px system-ui, sans-serif';
   g.textBaseline = 'middle';
-  const words = b.lines.flatMap((l, row) => l.w.map((w) => ({ ...w, row })));
+  const words = b.lines.flatMap((l, row) => l.w.map((w, i) => ({ ...w, row, at: i })));
   const rows = Math.max(1, b.lines.length);
   const rowH = Math.min(16, WORDS_H / rows);
   words.forEach((w) => {
     const wx = x(placing.mark + w.t);
     const ww = Math.max(2, dx(w.d));
     const wy = WORDS_TOP + w.row * rowH;
+    const isPicked = picked && picked.line === w.row && picked.i === w.at;
     g.fillStyle = w.c ? tone('--pink') : tone('--muted');
     g.globalAlpha = w.c ? 1 : 0.45;
     g.fillRect(wx, wy, ww, rowH - 2);
+    if (isPicked) {
+      g.globalAlpha = 1;
+      g.strokeStyle = tone('--mint');
+      g.lineWidth = 2;
+      g.strokeRect(wx - 1, wy - 1, ww + 2, rowH);
+    }
     if (w.c && ww > 26) {
       g.globalAlpha = 1;
       g.fillStyle = tone('--card');
@@ -2963,6 +3074,7 @@ function showPlacing() {
   ['wave', 'wave-at', 'guide-acts', 'guide-snap', 'wave-tools'].forEach((id) => {
     $(id).hidden = !on;
   });
+  if (typeof showWord === 'function') showWord();
 
   // Retiming needs guide mode, a guide to retime, and nothing already open.
   // The panel around it is hidden from a fan anyway; this is so that stays
@@ -3019,6 +3131,21 @@ function showPlacing() {
   };
   cv.addEventListener('pointerdown', (e) => {
     if (!placing) return;
+    /*
+     * The lower band is the words and the upper is the mark.
+     *
+     * One drawing doing two jobs, so where the press lands decides which. The
+     * words are the only thing drawn down there, and the mark is the only
+     * thing worth dragging up here.
+     */
+    const r = cv.getBoundingClientRect();
+    const y = ((e.clientY - r.top) / r.height) * TL_H;
+    if (GUIDE && y >= WORDS_TOP - 4) {
+      picked = wordAt(secAt(e));
+      showWord();
+      drawWave();
+      return;
+    }
     cv.setPointerCapture(e.pointerId);
     held = true;
     cv.style.cursor = 'grabbing';
@@ -3110,6 +3237,109 @@ $('guide-redo').addEventListener('click', async () => {
       : 'That did not save: ' + err.message;
   }
   $('guide-redo').disabled = false;
+});
+
+/*
+ * The word being retimed, as a line and a place in it.
+ *
+ * Only one at a time, and only in guide mode. Chosen by tapping the row of
+ * words under the waveform, which is already drawn where they fall.
+ */
+let picked = null;
+
+function wordAt(sec) {
+  const b = CHANTS[at];
+  let best = null;
+  b.lines.forEach((l, li) => l.w.forEach((w, wi) => {
+    const from = placing.mark + w.t;
+    const near = sec >= from - 0.06 && sec <= from + w.d + 0.06;
+    const away = Math.abs(sec - (from + w.d / 2));
+    if (near && (!best || away < best.away)) best = { line: li, i: wi, away };
+  }));
+  return best && { line: best.line, i: best.i };
+}
+
+function pickedWord() {
+  if (!picked || !CHANTS.length) return null;
+  const l = CHANTS[at].lines[picked.line];
+  return l && l.w[picked.i];
+}
+
+function showWord() {
+  const on = GUIDE && !!placing;
+  $('word-row').hidden = !on;
+  const w = on && pickedWord();
+  ['word-tools', 'word-tools2', 'word-acts'].forEach((id) => { $(id).hidden = !w; });
+  if (!on) return;
+  if (!w) {
+    $('word-who').textContent = 'Tap a word on the timeline to retime it';
+    return;
+  }
+  const key = wordKey(CHANTS[at].id, picked.line, picked.i);
+  const was = builtWords[key];
+  const moved = was && (Math.abs(was.t - w.t) > 0.001 || Math.abs(was.d - w.d) > 0.001);
+  $('word-who').textContent = `"${w.k}"` + (moved
+    ? ` · was ${was.t.toFixed(2)}s for ${was.d.toFixed(2)}s`
+    : ' · as the video has it');
+  $('wt-at').textContent = w.t.toFixed(2) + 's';
+  $('wd-at').textContent = w.d.toFixed(2) + 's';
+  $('word-reset').disabled = !moved;
+}
+
+function nudgeWord(field, by) {
+  const w = pickedWord();
+  if (!w) return;
+  const b = CHANTS[at];
+  if (field === 't') {
+    w.t = Math.max(0, Math.min(spanOf(b), +(w.t + by).toFixed(3)));
+  } else {
+    w.d = Math.max(0.05, Math.min(spanOf(b), +(w.d + by).toFixed(3)));
+  }
+  // Moved by hand, so the steps it was swept in no longer describe it.
+  delete w.p;
+  delete w.rp;
+  const key = wordKey(b.id, picked.line, picked.i);
+  wordEdits[key] = { k: w.k, t: w.t, d: w.d };
+  showWord();
+  paintChant(b);
+  showPlacing();
+}
+
+$('wt-less').addEventListener('click', () => nudgeWord('t', -0.02));
+$('wt-more').addEventListener('click', () => nudgeWord('t', 0.02));
+$('wd-less').addEventListener('click', () => nudgeWord('d', -0.02));
+$('wd-more').addEventListener('click', () => nudgeWord('d', 0.02));
+
+$('word-reset').addEventListener('click', () => {
+  const w = pickedWord();
+  if (!w) return;
+  const b = CHANTS[at];
+  const key = wordKey(b.id, picked.line, picked.i);
+  delete wordEdits[key];
+  applyWordEdits();
+  showWord();
+  paintChant(b);
+  showPlacing();
+});
+
+$('word-save').addEventListener('click', async () => {
+  if (!CAN_UPLOAD) return;
+  $('word-save').disabled = true;
+  $('guide-note').textContent = 'Saving the words…';
+  try {
+    await writeGuideMap();
+    const n = Object.keys(wordEdits).filter((k) => k.startsWith(CHANTS[at].id + ':')).length;
+    $('guide-note').textContent = n
+      ? (n === 1
+        ? `One word in block ${at + 1} keeps its own timing here.`
+        : `${n} words in block ${at + 1} keep their own timing here.`)
+      : `Block ${at + 1} is back to the video's own timings.`;
+  } catch (err) {
+    $('guide-note').textContent = locked(err.message)
+      ? 'Guides are locked. Paste the service_role key above to write them.'
+      : 'That did not save: ' + err.message;
+  }
+  $('word-save').disabled = false;
 });
 
 /**
@@ -3454,7 +3684,7 @@ function goto(i) {
   $('meter-fill').style.width = '0%';
   buttons(true);
   showTimes();
-  if (GUIDE) { showPlacing(); showRig(); showSpan(); }
+  if (GUIDE) { picked = null; showPlacing(); showRig(); showSpan(); showWord(); }
 }
 
 /**
@@ -3799,6 +4029,8 @@ async function loadSong(name) {
   claimSession();
   await restoreTakes();
   guideFiles.clear();
+  // What the song file says, kept before the manifest is allowed to correct it.
+  snapshotWords();
   await loadGuideMap();
 
   history.replaceState(null, '', `?song=${encodeURIComponent(name)}${location.hash}`);
