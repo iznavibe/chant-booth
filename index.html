@@ -367,6 +367,19 @@
   }
   .playRow input { accent-color: var(--pink); width: 15px; height: 15px; margin: 0; flex: none; }
 
+  /* Placing a guide by eye is not enough at a song's width, so also by number. */
+  .editRow { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .editRow .gap { flex: 1 1 12px; }
+  .editRow .at {
+    min-width: 62px;
+    text-align: center;
+    font-family: var(--display);
+    font-weight: 600;
+    font-size: .82rem;
+    font-variant-numeric: tabular-nums;
+    color: var(--ink-soft);
+  }
+
   /* Something still to send, said once and quietly. */
   @keyframes urging { 0%, 100% { box-shadow: 0 0 0 0 var(--pink-wash); }
                       50% { box-shadow: 0 0 0 7px transparent; } }
@@ -610,8 +623,20 @@
         drag the line onto the first word. Whatever runs up to it is played
         under the count; where there is none, the count is silent.
       </p>
+      <button class="ghost full" id="guide-edit" hidden>Retime this block's guide</button>
       <canvas id="wave" hidden style="width:100%;height:156px;touch-action:none;
               border-radius:12px;background:var(--sunk);cursor:grab"></canvas>
+      <div class="editRow" id="wave-tools" hidden>
+        <button class="ghost icon" id="mark-bb" title="back 100ms">&#171;</button>
+        <button class="ghost icon" id="mark-b" title="back 10ms">&#8249;</button>
+        <span class="at" id="mark-at">0.00s</span>
+        <button class="ghost icon" id="mark-f" title="on 10ms">&#8250;</button>
+        <button class="ghost icon" id="mark-ff" title="on 100ms">&#187;</button>
+        <span class="gap"></span>
+        <button class="ghost icon" id="zoom-out" title="see more">&#8722;</button>
+        <span class="at" id="zoom-at">all</span>
+        <button class="ghost icon" id="zoom-in" title="see closer">+</button>
+      </div>
       <p class="muted" id="wave-at" hidden></p>
       <label class="modeRow" id="run-row" hidden
              style="display:flex;align-items:center;gap:10px">
@@ -2712,20 +2737,44 @@ async function writeGuideMap() {
 let placing = null;   // {file, buf, from, peaks}
 
 /** Peaks at one pixel per column, so the drawing is cheap to repaint. */
-function peaksOf(buf, columns) {
+function peaksOf(buf, columns, fromSec, spanSec) {
   const d = buf.getChannelData(0);
-  const per = Math.max(1, Math.floor(d.length / columns));
+  const rate = buf.sampleRate;
+  const first = Math.max(0, Math.floor((fromSec || 0) * rate));
+  const width = Math.max(1, Math.floor((spanSec || buf.duration) * rate));
+  const per = Math.max(1, Math.floor(width / columns));
+  // Close in, every sample matters; far out, one in thirty is the same picture.
+  const step = Math.max(1, Math.floor(per / 64));
   const out = new Float32Array(columns);
   for (let i = 0; i < columns; i += 1) {
     let peak = 0;
-    const from = i * per;
-    for (let j = 0; j < per; j += 31) {
+    const from = first + i * per;
+    for (let j = 0; j < per; j += step) {
       const v = Math.abs(d[from + j] || 0);
       if (v > peak) peak = v;
     }
     out[i] = peak;
   }
   return out;
+}
+
+/**
+ * How much of the file the drawing shows, and where it starts.
+ *
+ * A whole song across the width of a phone is about half a second to the
+ * pixel, which is no way to put a mark on a syllable. So the drawing can close
+ * in, and does it around the mark, which is the thing being placed. Everything
+ * drawn asks these two rather than the file's own length.
+ */
+function viewSpan() {
+  if (!placing) return 0;
+  return Math.min(placing.span || placing.buf.duration, placing.buf.duration);
+}
+
+function viewFrom() {
+  if (!placing) return 0;
+  const span = viewSpan();
+  return Math.max(0, Math.min(placing.buf.duration - span, placing.mark - span / 2));
 }
 
 /* The three bands of the timeline, top to bottom. */
@@ -2763,26 +2812,45 @@ function drawWave() {
   g.setTransform(dpr, 0, 0, dpr, 0, 0);
   g.clearRect(0, 0, W, TL_H);
 
-  if (!placing.peaks) placing.peaks = peaksOf(placing.buf, Math.floor(W));
+  const span = viewSpan();
+  const from = viewFrom();
+  const shape = `${W}:${from.toFixed(3)}:${span.toFixed(3)}`;
+  if (placing.shape !== shape) {
+    placing.peaks = peaksOf(placing.buf, Math.floor(W), from, span);
+    placing.shape = shape;
+  }
 
   const b = CHANTS[at];
-  const total = placing.buf.duration;
   const heard = b.dur + TAIL;            // what is heard, after the silent lead-in
-  const x = (sec) => (sec / total) * W;
-  const dx = (sec) => (sec / total) * W;
+  const x = (sec) => ((sec - from) / span) * W;
+  const dx = (sec) => (sec / span) * W;
   const mark = x(placing.mark);
 
   // ---- ruler ----
   g.fillStyle = tone('--muted');
   g.font = '10px system-ui, sans-serif';
-  const step = total > 60 ? 10 : total > 20 ? 5 : 1;
-  for (let t = 0; t <= total; t += step) {
+  /*
+   * Ticks close enough to read against, and labels only where they fit.
+   *
+   * The two are not the same interval. Closed right in, a tick every tenth of
+   * a second is what the eye wants and a time written against every one of
+   * them runs into the next, which is worse than none at all.
+   */
+  const step = span > 120 ? 20 : span > 60 ? 10 : span > 20 ? 5 : span > 6 ? 1 : span > 2 ? 0.5 : 0.1;
+  const showsTenths = step < 1;
+  const perStep = dx(step);
+  const everyNth = Math.max(1, Math.ceil((showsTenths ? 46 : 38) / perStep));
+  let n = 0;
+  for (let t = Math.ceil(from / step) * step; t <= from + span; t += step, n += 1) {
     const tx = x(t);
     g.globalAlpha = 0.5;
-    g.fillRect(tx, 0, 1, 6);
+    g.fillRect(tx, 0, 1, n % everyNth ? 4 : 7);
+    if (n % everyNth) continue;
     g.globalAlpha = 0.8;
     const m = Math.floor(t / 60);
-    g.fillText(`${m}:${String(Math.round(t - m * 60)).padStart(2, '0')}`, tx + 3, 12);
+    const rest = t - m * 60;
+    g.fillText(`${m}:${showsTenths ? rest.toFixed(1).padStart(4, '0') : String(Math.round(rest)).padStart(2, '0')}`,
+      tx + 3, 12);
   }
   g.globalAlpha = 1;
 
@@ -2844,7 +2912,25 @@ function drawWave() {
 
 function showPlacing() {
   const on = !!placing;
-  ['wave', 'wave-at', 'guide-acts', 'guide-snap'].forEach((id) => { $(id).hidden = !on; });
+  ['wave', 'wave-at', 'guide-acts', 'guide-snap', 'wave-tools'].forEach((id) => {
+    $(id).hidden = !on;
+  });
+
+  // Retiming needs guide mode, a guide to retime, and nothing already open.
+  // The panel around it is hidden from a fan anyway; this is so that stays
+  // true of the button on its own rather than only of what encloses it.
+  const here = guideAt[CHANTS[at].id];
+  $('guide-edit').hidden = !GUIDE || on || !here;
+
+  if (on) {
+    $('mark-at').textContent = placing.mark.toFixed(2) + 's';
+    const span = viewSpan();
+    $('zoom-at').textContent = span >= placing.buf.duration - 0.01
+      ? 'all'
+      : (span >= 60 ? Math.round(span / 60) + 'm' : span.toFixed(span < 10 ? 1 : 0) + 's');
+    $('zoom-out').disabled = span >= placing.buf.duration - 0.01;
+    $('zoom-in').disabled = span <= 0.5;
+  }
 
   // The run-up can be changed on a block already placed, without loading its
   // file again: the mark is in the manifest, so the window can be worked out
@@ -2862,7 +2948,8 @@ function showPlacing() {
   const off = placing.mark - b.at;
   const runUp = Math.min(placing.run, placing.mark);
   $('wave-at').textContent =
-    `${placing.file.name} · first word at ${placing.mark.toFixed(2)}s · ` +
+    `${placing.file ? placing.file.name : 'the guide as saved'} · ` +
+    `first word at ${placing.mark.toFixed(2)}s · ` +
     (runUp > 0.02 ? `${runUp.toFixed(2)}s of run-up before it` : 'no run-up, so a silent count') +
     (placing.buf.duration >= 45 ? ` · ${off >= 0 ? '+' : ''}${off.toFixed(2)}s off the timings` : '');
   drawWave();
@@ -2874,8 +2961,9 @@ function showPlacing() {
   let held = false;
   const secAt = (e) => {
     const r = cv.getBoundingClientRect();
+    const span = viewSpan();
     return Math.max(0, Math.min(placing.buf.duration,
-      ((e.clientX - r.left) / r.width) * placing.buf.duration));
+      viewFrom() + ((e.clientX - r.left) / r.width) * span));
   };
   const put = (e) => {
     placing.mark = secAt(e);
@@ -2977,6 +3065,89 @@ $('guide-redo').addEventListener('click', async () => {
 });
 
 /**
+ * Move the mark by a small, known amount.
+ *
+ * Dragging is for finding the place and this is for landing on it. Ten
+ * milliseconds is under what anyone can hear and a hundred is about a
+ * syllable, which between them covers being nearly right and being a word out.
+ */
+function nudgeMark(by) {
+  if (!placing) return;
+  placing.mark = Math.max(0, Math.min(placing.buf.duration, +(placing.mark + by).toFixed(3)));
+  showPlacing();
+}
+
+/**
+ * Show more or less of the file, around the mark.
+ *
+ * Doubling each way: a few presses reach a second across the whole width,
+ * where a pixel is a couple of milliseconds and the mark can sit on the exact
+ * front of a word.
+ */
+function zoomBy(factor) {
+  if (!placing) return;
+  const was = viewSpan();
+  placing.span = Math.max(0.5, Math.min(placing.buf.duration, was * factor));
+  showPlacing();
+}
+
+$('mark-bb').addEventListener('click', () => nudgeMark(-0.1));
+$('mark-b').addEventListener('click', () => nudgeMark(-0.01));
+$('mark-f').addEventListener('click', () => nudgeMark(0.01));
+$('mark-ff').addEventListener('click', () => nudgeMark(0.1));
+$('zoom-out').addEventListener('click', () => zoomBy(2));
+$('zoom-in').addEventListener('click', () => zoomBy(0.5));
+
+/*
+ * The arrow keys do the same, once the drawing has been touched.
+ *
+ * Placing a mark is a lot of small corrections, and reaching for a button
+ * between each is the slow part.
+ */
+$('wave').setAttribute('tabindex', '0');
+$('wave').addEventListener('keydown', (e) => {
+  const by = { ArrowLeft: -0.01, ArrowRight: 0.01, PageDown: -0.1, PageUp: 0.1 }[e.key];
+  if (by === undefined) return;
+  e.preventDefault();
+  nudgeMark(e.shiftKey ? by * 10 : by);
+});
+
+/**
+ * Open the guide this block already has, to move it.
+ *
+ * A guide is a file plus a mark, and until now the only way to the mark was to
+ * choose the file again. The file is already up there and already fetched to
+ * play, so it can simply be opened where it was left: the same drawing, the
+ * same mark, and saving writes the placement without sending the audio a
+ * second time.
+ */
+$('guide-edit').addEventListener('click', async () => {
+  const b = CHANTS[at];
+  const here = guideAt[b.id];
+  if (!here) return;
+  $('guide-edit').disabled = true;
+  $('guide-note').textContent = 'Fetching the guide as it stands…';
+  try {
+    const buf = await guideBuffer(here.file);
+    if (!buf) throw new Error('that guide would not load');
+    placing = {
+      file: null,
+      held: here.file,
+      buf,
+      mark: here.mark === undefined ? here.from : here.mark,
+      run: here.run || PRE,
+      span: Math.min(buf.duration, 8),
+      peaks: null,
+    };
+    showPlacing();
+    $('guide-note').textContent = 'Drag or nudge the line onto the first word, then save.';
+  } catch (err) {
+    $('guide-note').textContent = 'That guide could not be opened: ' + err.message;
+  }
+  $('guide-edit').disabled = false;
+});
+
+/**
  * How much comes before the first word.
  *
  * One second is the shape a take has, and most blocks want exactly that. An
@@ -3032,10 +3203,20 @@ $('guide-hear').addEventListener('click', () => {
 
 /** Send the file once, then say where each block sits inside it. */
 async function saveGuideFile(name, entries) {
-  await put('guides', `${SONG}/${name}`, placing.file, placing.file.type || 'audio/mpeg', true);
+  /*
+   * The audio only goes up when there is new audio.
+   *
+   * Retiming opens the file that is already there, so saving is a change of
+   * mind about where the words start and nothing else. Sending the same
+   * megabytes back to say so would be slow, and would rewrite a file that is
+   * already right.
+   */
+  if (placing.file) {
+    await put('guides', `${SONG}/${name}`, placing.file, placing.file.type || 'audio/mpeg', true);
+    guideFiles.set(name, placing.buf);
+  }
   Object.assign(guideAt, entries);
   await writeGuideMap();
-  guideFiles.set(name, placing.buf);
 }
 
 $('guide-save').addEventListener('click', async () => {
@@ -3044,8 +3225,11 @@ $('guide-save').addEventListener('click', async () => {
   $('guide-save').disabled = true;
   $('guide-note').textContent = 'Saving…';
   try {
-    await saveGuideFile(b.id, {
-      [b.id]: { file: b.id, ...windowFor(placing.mark, b, placing.run) },
+    // A retimed guide keeps whichever file it was already playing, which may
+    // be the whole song rather than a clip cut for this block.
+    const holds = placing.file ? b.id : placing.held;
+    await saveGuideFile(holds, {
+      [b.id]: { file: holds, ...windowFor(placing.mark, b, placing.run) },
     });
     $('guide-note').textContent = `Block ${at + 1} done. Press Guide to hear it as a fan will.`;
     placing = null;
@@ -3063,7 +3247,9 @@ $('guide-all').addEventListener('click', async () => {
   // However far this block had to move, every other block moves the same.
   const shift = placing.mark - CHANTS[at].at;
   $('guide-all').disabled = true;
-  $('guide-note').textContent = 'Sending the song once, then placing every block…';
+  $('guide-note').textContent = placing.file
+    ? 'Sending the song once, then placing every block…'
+    : 'Placing every block from the guide already up there…';
   try {
     const entries = {};
     CHANTS.forEach((x) => {
