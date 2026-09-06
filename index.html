@@ -2308,17 +2308,23 @@ function reading(w) {
  * Whether the row under the words is telling this reader anything.
  *
  * It exists so a fan can read a line written in a script they do not read.
- * Someone reading in Korean already reads the Hangul, so under a Korean song
- * the row is that same line spelled out in Latin, which is a third script
- * nobody asked for and a line of clutter over every block. Under a Japanese
- * song it is the row that does the work, and it stays.
+ * Someone reading in Korean already reads the Hangul, and someone reading in
+ * Japanese already reads the kana, so under a song in their own language the
+ * row is that same line spelled out in Latin: a third script nobody asked for,
+ * on every line of every block. Under the other language's songs it is the row
+ * doing the work, and it stays.
+ *
+ * Which is the same as asking whether this song was given a reading in this
+ * language at all — a Korean song is given kana and a Japanese one Hangul, and
+ * neither is given its own.
  *
  * Asked of the song rather than of each word, so the row is either there or
- * not: half a row lines up with nothing above it.
+ * not: half a row lines up with nothing above it. English keeps the romaji
+ * either way, being the reader who has neither script.
  */
 function readingWanted() {
-  if (LANG !== 'ko') return true;
-  return CHANTS.some((b) => b.lines.some((l) => l.w.some((w) => w.ko)));
+  if (LANG !== 'ko' && LANG !== 'ja') return true;
+  return CHANTS.some((b) => b.lines.some((l) => l.w.some((w) => w[LANG])));
 }
 
 /**
