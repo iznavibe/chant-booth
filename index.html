@@ -493,15 +493,24 @@
   }
 
   /*
-   * Held for as long as there is something to shout.
+   * Two ways of saying it is your part, for two lengths of part.
    *
-   * It was a ring that flared once at the end of the count and faded, which
-   * said the moment had come and then nothing for the rest of it. A fan
-   * holding a word for four seconds, or answering twice in a breath, wants to
-   * see that it is still their part.
+   * A quick answer gets a ring that flares and goes, which is over about when
+   * the answer is. A long one, or several close enough together to be one
+   * stretch of shouting, gets a ring that stays up until it ends: a flare
+   * would have faded while the fan was still going, which is the moment they
+   * most need to see that it is still theirs.
    */
+  .stage.go { animation: go .45s ease-out; }
+  @keyframes go {
+    0%   { box-shadow: var(--shadow), 0 0 0 0 var(--pink); }
+    100% { box-shadow: var(--shadow), 0 0 0 16px rgba(253, 83, 143, 0); }
+  }
   .stage.shout { box-shadow: var(--shadow), 0 0 0 8px rgba(253, 83, 143, .45); }
-  @media (prefers-reduced-motion: reduce) { .stage { transition: none; } }
+  @media (prefers-reduced-motion: reduce) {
+    .stage { transition: none; }
+    .stage.go { animation: none; }
+  }
 
   /* What the mic is actually hearing, so a dead mic is obvious at a glance. */
   .level { height: 6px; border-radius: 99px; background: var(--sunk); overflow: hidden; margin-top: 10px; }
@@ -2653,6 +2662,32 @@ function stopSweep() {
   $('stage').classList.remove('shout');
 }
 
+/**
+ * The ring that flares once, for an answer that is over quickly.
+ *
+ * Taken off and put back with a reflow between, because an animation already
+ * running does not start again just because its class was added a second
+ * time, and two answers can be a second apart.
+ */
+function flare() {
+  const el = $('stage');
+  el.classList.remove('go');
+  void el.offsetWidth;
+  el.classList.add('go');
+}
+
+/*
+ * How long a stretch of shouting has to be before the ring is held rather
+ * than flared.
+ *
+ * The flare lasts about half a second. Anything shorter than this is over
+ * while it is still going, so flaring says the whole of it; anything longer
+ * and the flare would fade with the fan still shouting. Across the ten songs
+ * this holds for the roll calls, the long cheers, and runs like DUMB HOT's
+ * "wow!" into 鼻 高々 に swear, and flares for the two hundred quick answers.
+ */
+const HOLD_OVER = 2;
+
 function sweep(c, onDone, opts) {
   const live = !!(opts && opts.live);
   const run = ++sweepRun;
@@ -2675,7 +2710,9 @@ function sweep(c, onDone, opts) {
     if (last && w.t <= last.until + 0.3) last.until = Math.max(last.until, w.t + w.d);
     else runs.push({ at: w.t, until: w.t + w.d });
   });
+  runs.forEach((r) => { r.held = r.until - r.at >= HOLD_OVER; });
   let shouting = false;
+  let flared = -1;
   let loudest = 0;
   // Last drawn fill per word, so a frame only touches what moved.
 
@@ -2696,12 +2733,20 @@ function sweep(c, onDone, opts) {
       setStatus(t('shout'), true);
     }
 
-    // Up while a stretch is being shouted, down between them.
-    const now = runs.some((r) => el >= PRE + r.at && el <= PRE + r.until);
+    /*
+     * A long stretch keeps the ring up for as long as it lasts; a quick one
+     * flares as it begins and is over before the flare is.
+     */
+    const inRun = runs.findIndex((r) => el >= PRE + r.at && el <= PRE + r.until);
+    const now = inRun >= 0 && runs[inRun].held;
     if (now !== shouting) {
       shouting = now;
       $('stage').classList.toggle('shout', now);
-      if (now) setStatus(t('shout'), true);
+    }
+    if (inRun >= 0 && inRun !== flared) {
+      flared = inRun;
+      if (!runs[inRun].held) flare();
+      setStatus(t('shout'), true);
     }
 
     flatWords.forEach((w, i) => {
