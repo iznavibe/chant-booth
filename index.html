@@ -452,6 +452,17 @@
 
   .meter { height: 8px; border-radius: 99px; background: var(--sunk); overflow: hidden; margin-top: 18px; }
   .meter i { display: block; height: 100%; width: 0; background: var(--pink); border-radius: 99px; }
+  /* Wide enough to catch a thumb, with the line itself drawn thin inside it. */
+  .scrub { position: relative; height: 26px; margin: -4px 0 -6px; cursor: pointer;
+           touch-action: none; display: flex; align-items: center; }
+  .scrub::before { content: ''; position: absolute; left: 0; right: 0; height: 6px;
+                   border-radius: 99px; background: var(--sunk); }
+  .scrub i { position: absolute; left: 0; height: 6px; width: 0; border-radius: 99px;
+             background: var(--pink); }
+  .scrub b { position: absolute; width: 14px; height: 14px; border-radius: 50%;
+             background: var(--pink); transform: translateX(-7px);
+             box-shadow: 0 0 0 3px var(--card); }
+  .scrub:focus-visible { outline: 2px solid var(--pink); outline-offset: 3px; border-radius: 99px; }
 
   /* The run-in: a bar closing on the entry, the way a karaoke lead-in does.
      Watching a gap shrink to nothing says "now" far better than a number. */
@@ -737,7 +748,13 @@
       <div class="tabs" id="done-tabs"></div>
       <p class="muted" data-t="tapAny">Tap any one to hear it back or record it again.</p>
       <button class="ghost full" id="btn-all" data-t="hearAll">Hear it all together</button>
+      <div class="scrub" id="all-bar" hidden tabindex="0" role="slider"
+           aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"
+           data-t-aria="scrubAria" aria-label="Move through the song">
+        <i id="all-fill"></i><b id="all-dot"></b>
+      </div>
       <p class="muted" id="all-note" hidden></p>
+      <p class="muted" data-t="allEasy">It doesn't have to be perfect or on time. As long as it's your voice.</p>
       <button class="primary full" id="btn-upload" data-t="upload">Upload my takes</button>
       <p class="muted" id="upload-note"></p>
     </div>
@@ -883,6 +900,8 @@ const EN = {
   gathering: 'Putting it together…',
   nothingToHear: 'Record a block first.',
   allOf: 'Block {n} of {m}',
+  allEasy: "It doesn't have to be perfect or on time. As long as it's your voice.",
+  scrubAria: 'Move through the song',
   someQuiet: '{n} could not be played back on this phone, so they are music only.',
   tapAny: 'Tap any one to hear it back or record it again.',
   upload: 'Upload my takes',
@@ -979,6 +998,8 @@ const KO = {
   gathering: '이어 붙이는 중…',
   nothingToHear: '먼저 한 구간을 녹음해 주세요.',
   allOf: '{m}개 중 {n}번째 구간',
+  allEasy: '완벽하지 않아도, 박자가 조금 어긋나도 괜찮아요. 목소리만 담기면 돼요.',
+  scrubAria: '노래 위치 옮기기',
   someQuiet: '{n}개는 이 휴대폰에서 재생되지 않아 반주만 나와요.',
   tapAny: '눌러서 들어보거나 다시 녹음할 수 있어요.',
   upload: '녹음 보내기',
@@ -1072,6 +1093,8 @@ const JA = {
   gathering: 'つなげています…',
   nothingToHear: 'まず一つ録音してください。',
   allOf: '{m} ブロック中 {n} 番目',
+  allEasy: '完璧じゃなくても、少しずれても大丈夫。声が入っていれば十分です。',
+  scrubAria: '再生位置を動かす',
   someQuiet: '{n} 件はこの端末で再生できないので、伴奏だけになります。',
   tapAny: 'タップすると聞き直しも録り直しもできます。',
   upload: '録音を送る',
@@ -4156,55 +4179,103 @@ function finish() {
 /* ---------------- hearing the lot ---------------- */
 
 /*
- * Every block a fan has recorded, one after another, with the music.
+ * Every block a fan has recorded, in the song, where they sang it.
  *
- * Not built from a copy of the song. A track found elsewhere is a different
- * master, a different edit, or a second and a half late, and every block would
- * have to be lined up against it by hand. The guide clips are already cut from
- * the video these timings came from and already sit where the block does, so
- * putting a fan's voice back on top of them needs no alignment at all: it is
- * the same pairing they heard when they recorded, played one block after the
- * next.
+ * The song is taken from the video the timings were made against, so nothing
+ * has to be lined up: a block that begins at 59.81s in the song begins at
+ * 59.81s in this. It plays from end to end without stopping and a fan's voice
+ * comes in over the fanchant parts and leaves again. Where a song has no audio
+ * up yet, the guide clips play one block after another instead, which is the
+ * same pairing without the song in between.
  *
- * Everything is given its moment on the audio clock in one go, the way a
- * single block already is, rather than each block being started by a timer
- * when the one before it ends. A timer that fires a little late leaves a gap
- * a listener hears, and thirty of them accumulate.
+ * Laid out as a plan first, being what to play, from where in it, and at what
+ * second of the run, and only then given to the clock. Two things fall out of
+ * that. Everything is scheduled against one reading of the clock, so nothing
+ * drifts by however long the piece before it took to prepare. And the run can
+ * be started from any second of itself, which is what dragging the line does.
  */
 const ALL_GAP = 0.4;
 
+let allPlan = [];    // {buf|voice, from, len, at}
 let allMarks = [];   // where each block sits in the run, for showing along
-let allTicks = null;
 let allEnds = 0;
+let allQuiet = 0;
+let allOpens = 0;    // the audio-clock moment the run's second 0 sits at
+let allTicks = null;
+let allHeld = false; // dragging: the run waits where the thumb is
+/*
+ * What the count of interruptions stood at when this run last took the
+ * speaker. Anything else that sounds moves it past this and the run is over;
+ * the run's own seeking sets it again, or moving the line would read as
+ * somebody else having interrupted and stop the thing that was seeking.
+ */
+let allMark = -1;
 
 function stopAll() {
   if (allTicks) { clearInterval(allTicks); allTicks = null; }
+  allPlan = [];
   allMarks = [];
+  allHeld = false;
   stopPlaying();
   $('btn-all').textContent = t('hearAll');
+  $('all-bar').hidden = true;
   $('all-note').hidden = true;
 }
 
-/*
- * Say where the run has got to, and notice when it is over.
+/** Where the run has got to, in its own seconds. */
+function allAt() {
+  if (!allPlan.length) return 0;
+  return Math.max(0, Math.min(allEnds, audio().currentTime - allOpens));
+}
+
+function showAllAt(pos) {
+  const part = allEnds ? Math.max(0, Math.min(1, pos / allEnds)) : 0;
+  $('all-fill').style.width = (part * 100) + '%';
+  $('all-dot').style.left = (part * 100) + '%';
+  $('all-bar').setAttribute('aria-valuenow', Math.round(part * 100));
+  const now = allMarks.filter((m) => pos >= m.from).pop() || allMarks[0];
+  $('all-note').textContent = (now ? t('allOf', { n: now.i + 1, m: CHANTS.length }) : '')
+    + (allQuiet ? ' · ' + t('someQuiet', { n: allQuiet }) : '');
+}
+
+/**
+ * Start the run at a given second of itself.
  *
- * Counted from the moment everything was placed against rather than a second
- * reading of the clock: the two are a scheduling apart, and that showed as the
- * first block never being reached.
+ * Anything already finished by then is left out, and anything under way is
+ * started part-way in, so dragging into the middle of a block lands in the
+ * middle of that block rather than at the top of it.
  */
-function watchAll(ctx, opens, quiet) {
-  const mark = stops;
+function runFrom(pos) {
+  stopPlaying();
+  const ctx = audio();
+  const opens = ctx.currentTime + AHEAD;
+  allOpens = opens - pos;
+  allMark = stops;
+  allPlan.forEach((it) => {
+    if (it.at + it.len <= pos) return;
+    const late = Math.max(0, pos - it.at);
+    const when = opens + Math.max(0, it.at - pos);
+    if (it.buf) {
+      playWindow(it.buf, it.from + late, it.len - late, 0, true, GUIDE_UNDER, when);
+    } else {
+      it.voice.start(true, it.from + late, when);
+    }
+  });
+  showAllAt(pos);
+}
+
+/** Say where the run has got to, and notice when it is over. */
+function watchAll() {
+  if (allTicks) clearInterval(allTicks);
   allTicks = setInterval(() => {
+    if (allHeld) return;
     // Something else asked for the speaker, so this run is over whether or not
     // it had finished.
-    if (stops !== mark) { stopAll(); return; }
-    const el = audio().currentTime - opens;
-    if (el >= allEnds) { stopAll(); return; }
-    // Before the first block has opened it is still the first block.
-    const now = allMarks.filter((m) => el >= m.from).pop() || allMarks[0];
-    $('all-note').textContent = t('allOf', { n: now.i + 1, m: CHANTS.length })
-      + (quiet ? ' · ' + t('someQuiet', { n: quiet }) : '');
-  }, 200);
+    if (stops !== allMark) { stopAll(); return; }
+    const pos = allAt();
+    if (pos >= allEnds) { stopAll(); return; }
+    showAllAt(pos);
+  }, 100);
 }
 
 async function hearAll() {
@@ -4222,89 +4293,79 @@ async function hearAll() {
   stopPlaying();
 
   try {
-    const ctx = await wake();
+    await wake();
     await lagReady();
 
     /*
-     * Read once, then everything is placed against that one reading. Asking
-     * the clock again between blocks would fold each block's own preparing
-     * time into where the next one starts.
+     * Everything is fetched and decoded before a single second is counted.
+     *
+     * The song is nearly three megabytes the first time it is asked for, and
+     * reading the clock before waiting for it and scheduling after left the
+     * whole run that far behind itself. That is why the first press was out
+     * and the second, with the song already in hand, was in time.
      */
+    const whole = await guideBuffer('_song');
     const pieces = [];
     for (const { c, i, take } of mine) {
       const where = guideAt[c.id];
-      const buf = where ? await guideBuffer(where.file) : null;
+      const buf = whole ? null : (where ? await guideBuffer(where.file) : null);
       const voice = await prepare(take.blob);
       pieces.push({ c, i, take, where, buf, voice });
     }
 
-    const opens = ctx.currentTime + AHEAD + 0.05;
-    let quiet = 0;
+    allPlan = [];
     allMarks = [];
+    allQuiet = 0;
 
-    /*
-     * The song itself, where there is one, and the takes dropped into it.
-     *
-     * It comes out of the same file the timings were made against, so a block
-     * beginning at 59.81s in the song is 59.81s into this, to within a tenth
-     * of a millisecond. Nothing has to be lined up: the music runs from end to
-     * end without stopping, and each fan's voice comes in where they sang it.
-     *
-     * A take was recorded from a second before its first word — that second is
-     * the run-up they hear counting them in — so it goes back the same second
-     * early.
-     */
-    const whole = await guideBuffer('_song');
     if (whole) {
-      playWindow(whole, 0, whole.duration, 0, true, GUIDE_UNDER, opens);
+      allPlan.push({ buf: whole, from: 0, len: whole.duration, at: 0 });
       pieces.forEach(({ c, i, take, voice }) => {
-        if (voice.seconds <= 0) { quiet += 1; return; }
+        if (voice.seconds <= 0) { allQuiet += 1; return; }
+        // A take was recorded from a second before its first word, that second
+        // being the run-up counting the fan in, so it goes back a second early.
         const skip = Math.max(0, (take.lag > 0 ? take.lag : 0) + NUDGE);
         const at = c.at - PRE;
-        // A block that begins inside the first second starts the take at the
-        // song's own start, further into the take by however much is missing.
-        voice.start(true, skip + Math.max(0, -at), opens + Math.max(0, at));
-        allMarks.push({ i, from: Math.max(0, at), to: c.at + spanOf(c) });
+        const missing = Math.max(0, -at);
+        allPlan.push({
+          voice,
+          from: skip + missing,
+          len: Math.max(0, voice.seconds - skip - missing),
+          at: Math.max(0, at),
+        });
+        allMarks.push({ i, from: Math.max(0, at) });
       });
-      allMarks.sort((a, z) => a.from - z.from);
       allEnds = whole.duration;
-      $('btn-all').textContent = t('stopAll');
-      $('btn-all').disabled = false;
-      watchAll(ctx, opens, quiet);
-      return;
+    } else {
+      let head = 0;
+      pieces.forEach(({ c, i, take, where, buf, voice }) => {
+        const lead = (buf && where.lead) || 0;
+        const hold = buf && where.hold > 0 ? where.hold : 0;
+        const skip = Math.max(0, (take.lag > 0 ? take.lag : 0) + NUDGE);
+        // A take that could not be decoded plays through an element, and an
+        // element cannot be given a moment: it starts when it is told to. So
+        // that block runs as music alone rather than as a voice landing in the
+        // wrong place.
+        const said = voice.seconds > skip;
+        if (!said) allQuiet += 1;
+        if (buf) allPlan.push({ buf, from: where.from, len: where.len, at: head + lead });
+        if (said) {
+          allPlan.push({ voice, from: skip, len: voice.seconds - skip, at: head + hold });
+        }
+        allMarks.push({ i, from: head });
+        head += Math.max(
+          buf ? lead + where.len : 0,
+          said ? hold + voice.seconds - skip : 0,
+          0.5,
+        ) + ALL_GAP;
+      });
+      allEnds = Math.max(0.1, head - ALL_GAP);
     }
 
-    // Otherwise the clips, one block after another, which is every block's
-    // own music and no song in between.
-    let head = opens;
-    pieces.forEach(({ c, i, take, where, buf, voice }) => {
-      const lead = (buf && where.lead) || 0;
-      const hold = buf && where.hold > 0 ? where.hold : 0;
-      // A take that could not be decoded plays through an element instead, and
-      // an element cannot be given a moment: it starts when it is told to. So
-      // that block runs as music alone rather than as somebody's voice landing
-      // in the wrong place.
-      const canPlace = voice.seconds > 0;
-      if (!canPlace) quiet += 1;
-
-      if (buf) playWindow(buf, where.from, where.len, lead, true, GUIDE_UNDER, head);
-      if (canPlace) {
-        voice.start(true, Math.max(0, (take.lag > 0 ? take.lag : 0) + NUDGE), head + hold);
-      }
-
-      const runs = Math.max(
-        buf ? lead + where.len : 0,
-        canPlace ? hold + Math.max(0, voice.seconds - (take.lag > 0 ? take.lag : 0)) : 0,
-        0.5,
-      );
-      allMarks.push({ i, from: head - opens, to: head - opens + runs });
-      head += runs + ALL_GAP;
-    });
-
-    allEnds = head - opens;
+    allMarks.sort((a, z) => a.from - z.from);
     $('btn-all').textContent = t('stopAll');
-    $('btn-all').disabled = false;
-    watchAll(ctx, opens, quiet);
+    $('all-bar').hidden = false;
+    runFrom(0);
+    watchAll();
   } catch (err) {
     stopAll();
     $('all-note').hidden = false;
@@ -4314,6 +4375,46 @@ async function hearAll() {
 }
 
 $('btn-all').addEventListener('click', hearAll);
+
+/*
+ * Dragging the line.
+ *
+ * Held silent while the thumb is moving and restarted where it is let go: a
+ * run re-scheduled on every pointer move would be thirty starts and stops a
+ * second, and every one of them is a click.
+ */
+(() => {
+  const bar = $('all-bar');
+  if (!bar) return;
+  const where = (e) => {
+    const box = bar.getBoundingClientRect();
+    return Math.max(0, Math.min(1, (e.clientX - box.left) / (box.width || 1))) * allEnds;
+  };
+  const move = (e) => { if (allHeld) showAllAt(where(e)); };
+  const drop = (e) => {
+    if (!allHeld) return;
+    allHeld = false;
+    window.removeEventListener('pointermove', move);
+    window.removeEventListener('pointerup', drop);
+    if (allPlan.length) runFrom(where(e));
+  };
+  bar.addEventListener('pointerdown', (e) => {
+    if (!allPlan.length) return;
+    e.preventDefault();
+    allHeld = true;
+    stopPlaying();
+    showAllAt(where(e));
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', drop);
+  });
+  bar.addEventListener('keydown', (e) => {
+    if (!allPlan.length) return;
+    const by = { ArrowLeft: -5, ArrowRight: 5, ArrowDown: -5, ArrowUp: 5 }[e.key];
+    if (by === undefined) return;
+    e.preventDefault();
+    runFrom(Math.max(0, Math.min(allEnds - 0.1, allAt() + by)));
+  });
+})();
 
 /* ---------------- hearing one back ---------------- */
 
