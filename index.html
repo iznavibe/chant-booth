@@ -3461,6 +3461,24 @@ function drawWave() {
   });
   g.globalAlpha = 1;
 
+  /*
+   * Where the sound has got to, if any is sounding.
+   *
+   * Placing a guide is watching a shape and hearing a sound and deciding
+   * whether they are the same moment. Without a line moving across it, the
+   * only way to tell was to guess from the timing readout afterwards.
+   */
+  // Only while something is actually sounding. Frames stop arriving when the
+  // tab is hidden, so a run that ends out of sight never gets to clear this,
+  // and the line would still be sitting there on the way back.
+  if (headAt !== null && playing.length) {
+    const hx = x(headAt);
+    if (hx >= -2 && hx <= W + 2) {
+      g.fillStyle = tone('--mint');
+      g.fillRect(hx - 1, RULER, 2, TL_H - RULER);
+    }
+  }
+
   // ---- the mark itself, the one thing to drag ----
   g.fillStyle = tone('--pink');
   g.fillRect(mark - 1.5, RULER, 3, TL_H - RULER);
@@ -3503,6 +3521,33 @@ function drawWave() {
     }
   });
   g.globalAlpha = 1;
+}
+
+/*
+ * Where in the file the sound is, in seconds, or nothing when silent.
+ *
+ * Followed on the audio clock rather than a timer, because that is the clock
+ * the sound is actually on: a timer drifts against it and the line would creep
+ * away from what is being heard.
+ */
+let headAt = null;
+let headFrom = null;
+
+function followHead(from, len, startsAt) {
+  headFrom = { from, len, startsAt };
+  const step = () => {
+    if (!headFrom || !placing || !playing.length) {
+      headAt = null;
+      headFrom = null;
+      if (placing) drawWave();
+      return;
+    }
+    const el = audio().currentTime - headFrom.startsAt;
+    headAt = Math.max(headFrom.from, Math.min(headFrom.from + headFrom.len, headFrom.from + el));
+    drawWave();
+    requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
 }
 
 function showPlacing() {
@@ -3576,6 +3621,41 @@ function showPlacing() {
     showPlacing();
   };
 
+  /*
+   * A word being dragged: which one, which edge, and what it looked like when
+   * it was taken hold of.
+   *
+   * Every move is worked out from where the word started rather than from
+   * where it is now, so a drag that wanders back and forth does not accumulate
+   * a hundred small roundings.
+   */
+  let onWord = null;
+  const EDGE = 6;
+
+  /** The word under a press, and whether the press landed on one of its ends. */
+  const wordUnder = (e) => {
+    const r = cv.getBoundingClientRect();
+    const perSec = r.width / viewSpan();
+    const sec = secAt(e);
+    const y = ((e.clientY - r.top) / r.height) * TL_H;
+    const b = CHANTS[at];
+    const rows = Math.max(1, b.lines.length);
+    const rowH = Math.min(16, WORDS_H / rows);
+    const row = Math.floor((y - WORDS_TOP) / rowH);
+    const line = b.lines[row];
+    if (!line) return null;
+    for (let i = 0; i < line.w.length; i += 1) {
+      const w = line.w[i];
+      const from = placing.mark + w.t;
+      const to = from + w.d;
+      if (sec < from - EDGE / perSec || sec > to + EDGE / perSec) continue;
+      const edge = (sec - from) * perSec <= EDGE ? 'start'
+        : (to - sec) * perSec <= EDGE ? 'end' : 'move';
+      return { line: row, i, edge, t: w.t, d: w.d, grabbed: sec };
+    }
+    return null;
+  };
+
   /** The seconds the pink band covers: the run-up, then the block. */
   const bandAt = () => {
     const b = CHANTS[at];
@@ -3594,7 +3674,9 @@ function showPlacing() {
     const r = cv.getBoundingClientRect();
     const y = ((e.clientY - r.top) / r.height) * TL_H;
     if (GUIDE && y >= WORDS_TOP - 4) {
-      picked = wordAt(secAt(e));
+      onWord = wordUnder(e);
+      picked = onWord ? { line: onWord.line, i: onWord.i } : wordAt(secAt(e));
+      if (onWord) cv.setPointerCapture(e.pointerId);
       showWord();
       drawWave();
       return;
@@ -3607,8 +3689,22 @@ function showPlacing() {
     grab = sec >= from && sec <= to ? sec - placing.mark : 0;
     put(e);
   });
-  cv.addEventListener('pointermove', (e) => { if (held && placing) put(e); });
-  const drop = () => { held = false; grab = 0; cv.style.cursor = 'grab'; };
+  cv.addEventListener('pointermove', (e) => {
+    if (!placing) return;
+    if (onWord) {
+      const by = secAt(e) - onWord.grabbed;
+      if (onWord.edge === 'move') setWordTiming(onWord.t + by, onWord.d);
+      else if (onWord.edge === 'start') {
+        const t = Math.min(onWord.t + by, onWord.t + onWord.d - 0.05);
+        setWordTiming(t, onWord.t + onWord.d - t);
+      } else setWordTiming(onWord.t, onWord.d + by);
+      showWord();
+      drawWave();
+      return;
+    }
+    if (held) put(e);
+  });
+  const drop = () => { held = false; grab = 0; onWord = null; cv.style.cursor = 'grab'; };
   cv.addEventListener('pointerup', drop);
   cv.addEventListener('pointercancel', drop);
 })();
@@ -3864,6 +3960,25 @@ function rebuildLine() {
   applySplits();
   snapshotWords();
   applyWordEdits();
+}
+
+/**
+ * Put a word where it has been put, however it was moved.
+ *
+ * Shared by the nudge buttons and by dragging, so both clamp the same way and
+ * both drop the sweep steps: a word moved by hand is no longer described by
+ * the steps the video cut it into.
+ */
+function setWordTiming(t, d) {
+  const w = pickedWord();
+  if (!w) return;
+  const b = CHANTS[at];
+  const room = spanOf(b) + tailOf(b);
+  w.t = Math.max(0, Math.min(room, +t.toFixed(3)));
+  w.d = Math.max(0.05, Math.min(room, +d.toFixed(3)));
+  delete w.p;
+  delete w.rp;
+  wordEdits[wordKey(b.id, picked.line, picked.i)] = { k: w.k, t: w.t, d: w.d };
 }
 
 function nudgeWord(field, by) {
@@ -4241,7 +4356,9 @@ function hearPlacing() {
   if (playing.length) { stopSweep(); stopPlaying(); return; }
   const b = CHANTS[at];
   const w = windowFor(placing.mark, b, placing.run);
+  const opens = audio().currentTime + AHEAD;
   playWindow(placing.buf, w.from, w.len, w.lead);
+  followHead(w.from, w.len, opens + (w.lead || 0));
   if (w.hold > 0) setTimeout(() => sweep(b, () => {}), w.hold * 1000);
   else sweep(b, () => {});
 }
