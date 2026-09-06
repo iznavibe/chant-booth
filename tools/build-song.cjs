@@ -148,6 +148,16 @@ const NAMES = [
 const WHOLE = [
   'iznaya', 'izna', 'naya', 'koko', 'mai', '이즈나야', '이즈나', '나야',
   '함성', 'cheer',
+  /*
+   * The members, and what the crowd calls after them.
+   *
+   * A Hangul line welds at its spaces where the two rows are cut alike, and
+   * IZNA's roll call is one of the places they are not: the romaji reads
+   * "Choi Jungeun," across two syllables of a name written as three, so the
+   * name was being asked for as 최 정은. Named here instead, which is the same
+   * answer wherever the rows happen to disagree.
+   */
+  '마이', '방지민', '코코', '유사랑', '최정은', '정세비', '사랑해',
 ];
 const bare = (t) => t.replace(/[^\p{L}\p{N}]/gu, '').toLowerCase();
 
@@ -189,6 +199,12 @@ function beatsOf(run, key) {
   return all.length > 1 ? all : undefined;
 }
 
+/** The romaji's own spacing has done its work by now. */
+function dropSpacing(words) {
+  words.forEach((w) => { delete w.rsp; });
+  return words;
+}
+
 function joinNames(words) {
   const out = [];
   for (let i = 0; i < words.length; i += 1) {
@@ -202,7 +218,10 @@ function joinNames(words) {
       out.push({
         ...run[0],
         k: run.map((w) => w.k).join(''),
-        r: run.map((w) => w.r).join(''),
+        // A space back wherever the romaji had one: "Choi Jungeun", not
+        // "ChoiJungeun", while izna's three pieces stay the one word they are.
+        r: run.map((w, n) => (n && run[n - 1].rsp ? ' ' : '') + w.r).join(''),
+        rsp: run[run.length - 1].rsp,
         d: +(run[run.length - 1].t + run[run.length - 1].d - run[0].t).toFixed(2),
         p: beatsOf(run, 'p'),
         rp: beatsOf(run, 'rp'),
@@ -660,14 +679,26 @@ function assemble(all, first, last) {
     });
 
     return {
-      w: bracketCues(matchNamePunctuation(joinNames(tidyCommas(groups.map((g, n) => {
+      w: dropSpacing(bracketCues(matchNamePunctuation(joinNames(tidyCommas(groups.map((g, n) => {
         const first = g.units[0];
         const last = g.units[g.units.length - 1];
+        const rRaw = even
+          ? g.units.map((u, m) => (roRaw[g.at + m] && roRaw[g.at + m].text) || '').join('')
+          : parts[n].map((r) => r.text).join('');
         return {
           k: strip(g.units.map((u) => u.text).join('')).trim(),
-          r: strip(even
-            ? g.units.map((u, m) => (roRaw[g.at + m] && roRaw[g.at + m].text) || '').join('')
-            : parts[n].map((r) => r.text).join('')).trim(),
+          r: strip(rRaw).trim(),
+          /*
+           * Whether the romaji under this word ended a word of its own.
+           *
+           * 최정은 is one name written across two romaji words, "Choi Jungeun",
+           * while 이즈나 is one word cut into three pieces. Both arrive as
+           * several pieces to be put back together, and only the space at the
+           * end of "Choi " says which is which. It is trimmed off the moment
+           * the word is made, so it is written down here first, and dropped
+           * again once the joining is done.
+           */
+          rsp: /\s$/.test(rRaw),
           t: +(first.start - start).toFixed(2),
           d: +(last.end - first.start).toFixed(2),
           /*
@@ -689,7 +720,7 @@ function assemble(all, first, last) {
           // Not the fan's to sing, but they need to see where they land on it.
           s: g.units.some((u) => u.strike) ? 1 : 0,
         };
-      }))))),
+      })))))),
     };
   });
 
