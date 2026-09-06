@@ -247,6 +247,7 @@
     padding: 26px 20px;
     text-align: center;
     box-shadow: var(--shadow);
+    transition: box-shadow .16s ease-out;
   }
   /* A block as it reads in the video: the original, its romaji underneath,
      and the shouted parts standing out from the sung ones. */
@@ -491,12 +492,16 @@
     border-radius: 99px;
   }
 
-  /* The instant to come in. */
-  .stage.go { animation: go .45s ease-out; }
-  @keyframes go {
-    0%   { box-shadow: 0 0 0 0 var(--pink); }
-    100% { box-shadow: 0 0 0 16px rgba(253, 83, 143, 0); }
-  }
+  /*
+   * Held for as long as there is something to shout.
+   *
+   * It was a ring that flared once at the end of the count and faded, which
+   * said the moment had come and then nothing for the rest of it. A fan
+   * holding a word for four seconds, or answering twice in a breath, wants to
+   * see that it is still their part.
+   */
+  .stage.shout { box-shadow: var(--shadow), 0 0 0 8px rgba(253, 83, 143, .45); }
+  @media (prefers-reduced-motion: reduce) { .stage { transition: none; } }
 
   /* What the mic is actually hearing, so a dead mic is obvious at a glance. */
   .level { height: 6px; border-radius: 99px; background: var(--sunk); overflow: hidden; margin-top: 10px; }
@@ -2643,20 +2648,9 @@ function showTimes() {
  * looking at any more, over the top of the one that was.
  */
 let sweepRun = 0;
-function stopSweep() { sweepRun += 1; }
-
-/**
- * The ring that says come in now.
- *
- * Taken off and put back with a reflow between, because an animation that is
- * already running does not start again just because its class was added a
- * second time, and two entries can be a second apart.
- */
-function ring() {
-  const el = $('stage');
-  el.classList.remove('go');
-  void el.offsetWidth;
-  el.classList.add('go');
+function stopSweep() {
+  sweepRun += 1;
+  $('stage').classList.remove('shout');
 }
 
 function sweep(c, onDone, opts) {
@@ -2667,25 +2661,21 @@ function sweep(c, onDone, opts) {
   const t0 = performance.now();
   let entered = false;
   /*
-   * The moments a fan has to come in, after the first.
+   * The stretches a fan is shouting through.
    *
    * A block is not one shout. It answers, waits through a line of izna's, and
-   * answers again, and the second entry arrives with nothing to mark it: the
-   * ring at the end of the count said "now" once and then never again.
-   *
-   * A run of chant words is one moment, not one per word. 마이, 방지민, 코코,
-   * 유사랑 is a single roll call to come in on, and a ring around each name
-   * would be a strobe. Anything already covered by the count-in's own ring is
-   * left to it.
+   * answers again, and the ring has to be up for each of those and down in
+   * between. Words close enough to be one breath are one stretch: DUMB HOT
+   * puts a seventh of a second between "wow!" and 鼻, and blinking off for
+   * that reads as a fault rather than as a rest.
    */
-  const entries = [];
+  const runs = [];
   flatWords.filter((w) => w.c).sort((a, b) => a.t - b.t).forEach((w) => {
-    const last = entries[entries.length - 1];
+    const last = runs[runs.length - 1];
     if (last && w.t <= last.until + 0.3) last.until = Math.max(last.until, w.t + w.d);
-    else entries.push({ at: w.t, until: w.t + w.d });
+    else runs.push({ at: w.t, until: w.t + w.d });
   });
-  const cues = entries.map((e) => e.at).filter((at) => at > 0.3);
-  let nextCue = 0;
+  let shouting = false;
   let loudest = 0;
   // Last drawn fill per word, so a frame only touches what moved.
 
@@ -2703,15 +2693,15 @@ function sweep(c, onDone, opts) {
       entered = true;
       $('lead-bar').style.width = '0%';
       $('lead').classList.remove('on');
-      ring();
       setStatus(t('shout'), true);
     }
 
-    // Every entry after the first gets the same ring the count-in gave.
-    while (nextCue < cues.length && el >= PRE + cues[nextCue]) {
-      nextCue += 1;
-      ring();
-      setStatus(t('shout'), true);
+    // Up while a stretch is being shouted, down between them.
+    const now = runs.some((r) => el >= PRE + r.at && el <= PRE + r.until);
+    if (now !== shouting) {
+      shouting = now;
+      $('stage').classList.toggle('shout', now);
+      if (now) setStatus(t('shout'), true);
     }
 
     flatWords.forEach((w, i) => {
@@ -2738,6 +2728,7 @@ function sweep(c, onDone, opts) {
     else {
       // Leave the block sung through rather than snapping back to nothing.
       flatNodes.forEach((ns) => ns.forEach((n) => n.classList.remove('now')));
+      $('stage').classList.remove('shout');
       $('meter-fill').style.width = '0%';
       $('lead').classList.remove('on');
       $('level').hidden = true;

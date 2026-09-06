@@ -799,7 +799,12 @@ const BY_HAND = {
   izna: {
     b8: { before: 1 }, b10: { drop: 2 }, b14: { before: 1 }, b15: { order: [0, 1, 3, 2] },
   },
-  dumbhot: { b3: { before: 1 }, b10: { before: 1 }, b11: { before: 1 } },
+  dumbhot: {
+    b3: { before: 1 }, b10: { before: 1 }, b11: { before: 1 },
+    // The chant sits above the line it answers, as it already does earlier in
+    // this same block: the roll call leads, izna's line follows.
+    b16: { order: [0, 1, 3, 2] },
+  },
   beep: { b5: { before: 1 }, b13: { before: 1 } },
 };
 
