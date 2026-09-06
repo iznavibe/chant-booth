@@ -176,14 +176,42 @@ function syllablesIn(text) {
   return m ? m.length : 1;
 }
 
+/**
+ * A step with nothing written in it is time, not a step.
+ *
+ * The rows are cut apart independently, and where the lyric has more pieces
+ * than the romaji one of them can end up with no romaji under it at all. Its
+ * step then carries no letters, and the reading row has nothing to colour
+ * while the line above it goes on being coloured: IZNA's iznaya held still for
+ * half a second in the middle of itself. The seconds are real, so they are
+ * given to the step that has the letters they belong to.
+ */
+function realSteps(steps) {
+  const out = [];
+  steps.forEach((u) => {
+    const [text, t, d] = u;
+    if (String(text).trim() || !out.length) { out.push([text, t, d]); return; }
+    const last = out[out.length - 1];
+    last[2] = +(t + d - last[1]).toFixed(2);
+  });
+  // An empty step at the front has nothing behind it, so it goes forwards.
+  while (out.length > 1 && !String(out[0][0]).trim()) {
+    out[1][2] = +(out[1][1] + out[1][2] - out[0][1]).toFixed(2);
+    out[1][1] = out[0][1];
+    out.shift();
+  }
+  return out;
+}
+
 /** The steps of a sweep, as text and the seconds it is held. */
 function beats(units, start) {
   if (!units || units.length < 2) return undefined;
-  return units.map((u) => [
+  const all = realSteps(units.map((u) => [
     u.text,
     +(u.start - start).toFixed(2),
     +(u.end - u.start).toFixed(2),
-  ]);
+  ]));
+  return all.length > 1 ? all : undefined;
 }
 
 /**
@@ -195,7 +223,7 @@ function beats(units, start) {
  */
 function beatsOf(run, key) {
   const text = key === 'p' ? 'k' : 'r';
-  const all = run.flatMap((w) => w[key] || [[w[text], w.t, w.d]]);
+  const all = realSteps(run.flatMap((w) => w[key] || [[w[text], w.t, w.d]]));
   return all.length > 1 ? all : undefined;
 }
 
