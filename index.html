@@ -247,6 +247,7 @@
     padding: 26px 20px;
     text-align: center;
     box-shadow: var(--shadow);
+    transition: box-shadow .16s ease-out;
   }
   /* A block as it reads in the video: the original, its romaji underneath,
      and the shouted parts standing out from the sung ones. */
@@ -492,31 +493,24 @@
   }
 
   /*
-   * The ring, and how far up it is.
+   * Two ways of saying it is your part, for two lengths of part.
    *
-   * Nothing sounds while the mic is open, so this is the only warning there
-   * is, and it used to arrive at full from nothing: by the time it said now,
-   * now had started. It comes up over the second before instead.
-   *
-   * The ring itself never changes size. Only how strongly it is there. Growing
-   * the spread as well made the card look like it was breathing, which is a
-   * second thing happening at the moment there should only be one.
+   * A quick answer gets a ring that flares and goes, which is over about when
+   * the answer is. A long one, or several close enough together to be one
+   * stretch of shouting, gets a ring that stays up until it ends: a flare
+   * would have faded while the fan was still going, which is the moment they
+   * most need to see that it is still theirs.
    */
-  .stage { box-shadow: var(--shadow), 0 0 0 8px rgba(253, 83, 143, calc(var(--warm, 0) * .45)); }
-  /*
-   * And the moment itself, which the rise cannot say on its own.
-   *
-   * A ring that grows all the way to full says a shout is coming and never
-   * says it has arrived: there is no instant in a ramp. So the rise stops well
-   * short, and the moment is a jump to full with a pulse thrown off it. The
-   * contrast is what marks the instant, not the brightness.
-   */
-  .stage.go { animation: go .4s cubic-bezier(.2, .9, .3, 1); }
+  .stage.go { animation: go .45s ease-out; }
   @keyframes go {
     0%   { box-shadow: var(--shadow), 0 0 0 0 var(--pink); }
-    100% { box-shadow: var(--shadow), 0 0 0 18px rgba(253, 83, 143, 0); }
+    100% { box-shadow: var(--shadow), 0 0 0 16px rgba(253, 83, 143, 0); }
   }
-  @media (prefers-reduced-motion: reduce) { .stage.go { animation: none; } }
+  .stage.shout { box-shadow: var(--shadow), 0 0 0 8px rgba(253, 83, 143, .45); }
+  @media (prefers-reduced-motion: reduce) {
+    .stage { transition: none; }
+    .stage.go { animation: none; }
+  }
 
   /* What the mic is actually hearing, so a dead mic is obvious at a glance. */
   .level { height: 6px; border-radius: 99px; background: var(--sunk); overflow: hidden; margin-top: 10px; }
@@ -2722,11 +2716,11 @@ function showTimes() {
 let sweepRun = 0;
 function stopSweep() {
   sweepRun += 1;
-  $('stage').style.setProperty('--warm', '0');
+  $('stage').classList.remove('shout');
 }
 
 /**
- * The pulse thrown off the ring at the instant the shouting starts.
+ * The ring that flares once, for an answer that is over quickly.
  *
  * Taken off and put back with a reflow between, because an animation already
  * running does not start again just because its class was added a second
@@ -2740,47 +2734,16 @@ function flare() {
 }
 
 /*
- * How long the ring takes to come up, and to go again.
+ * How long a stretch of shouting has to be before the ring is held rather
+ * than flared.
  *
- * A second to rise, the same beat the count-in already takes, so the two say
- * the same thing in the same time and a fan who has met one knows the other.
- * It leaves quickly, because by then the shouting is over and there is nothing
- * left to warn about.
+ * The flare lasts about half a second. Anything shorter than this is over
+ * while it is still going, so flaring says the whole of it; anything longer
+ * and the flare would fade with the fan still shouting. Across the ten songs
+ * this holds for the roll calls, the long cheers, and runs like DUMB HOT's
+ * "wow!" into 鼻 高々 に swear, and flares for the two hundred quick answers.
  */
-const WARM_UP = 1;
-const COOL_OFF = 0.35;
-
-/*
- * How far up the ring gets before the shouting starts.
- *
- * Not far. It is a warning that something is coming, and if it arrives at full
- * before the moment does then the moment has nothing left to be: the ring was
- * already as bright as it gets. Stopping at a third leaves the jump to do the
- * work.
- */
-const WARM_PEAK = 0.32;
-
-/**
- * How lit the ring should be at a given second of the block.
- *
- * Nothing until the last second before a stretch of shouting; then part way
- * up, full the instant it starts, held while it lasts, and away. Squared on
- * the way up so it begins almost invisibly rather than sitting half on, which
- * reads as a glow instead of as a warning.
- */
-function ringAt(runs, pos) {
-  for (const r of runs) {
-    if (pos > r.until + COOL_OFF) continue;
-    if (pos >= r.until) return Math.max(0, 1 - (pos - r.until) / COOL_OFF);
-    if (pos >= r.at) return 1;
-    if (pos > r.at - WARM_UP) {
-      const up = (pos - (r.at - WARM_UP)) / WARM_UP;
-      return up * up * WARM_PEAK;
-    }
-    return 0;
-  }
-  return 0;
-}
+const HOLD_OVER = 2;
 
 function sweep(c, onDone, opts) {
   const live = !!(opts && opts.live);
@@ -2804,8 +2767,9 @@ function sweep(c, onDone, opts) {
     if (last && w.t <= last.until + 0.3) last.until = Math.max(last.until, w.t + w.d);
     else runs.push({ at: w.t, until: w.t + w.d });
   });
-  let told = -1;
-  let warm = -1;
+  runs.forEach((r) => { r.held = r.until - r.at >= HOLD_OVER; });
+  let shouting = false;
+  let flared = -1;
   let loudest = 0;
   // Last drawn fill per word, so a frame only touches what moved.
 
@@ -2827,17 +2791,18 @@ function sweep(c, onDone, opts) {
     }
 
     /*
-     * The ring: up before the shouting, held through it, gone after.
+     * A long stretch keeps the ring up for as long as it lasts; a quick one
+     * flares as it begins and is over before the flare is.
      */
-    const want = ringAt(runs, el - PRE);
-    if (Math.abs(want - warm) > 0.01) {
-      warm = want;
-      $('stage').style.setProperty('--warm', want.toFixed(3));
-    }
     const inRun = runs.findIndex((r) => el >= PRE + r.at && el <= PRE + r.until);
-    if (inRun >= 0 && inRun !== told) {
-      told = inRun;
-      flare();
+    const now = inRun >= 0 && runs[inRun].held;
+    if (now !== shouting) {
+      shouting = now;
+      $('stage').classList.toggle('shout', now);
+    }
+    if (inRun >= 0 && inRun !== flared) {
+      flared = inRun;
+      if (!runs[inRun].held) flare();
       setStatus(t('shout'), true);
     }
 
@@ -2865,7 +2830,7 @@ function sweep(c, onDone, opts) {
     else {
       // Leave the block sung through rather than snapping back to nothing.
       flatNodes.forEach((ns) => ns.forEach((n) => n.classList.remove('now')));
-      $('stage').style.setProperty('--warm', '0');
+      $('stage').classList.remove('shout');
       $('meter-fill').style.width = '0%';
       $('lead').classList.remove('on');
       $('level').hidden = true;
