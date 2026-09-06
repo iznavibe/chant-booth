@@ -1321,8 +1321,42 @@ function idb(name, mode, run) {
 
 const keep = (key, val) => idb('takes', 'readwrite', (o) => o.put(val, key));
 const forget = (key) => idb('takes', 'readwrite', (o) => o.delete(key));
-const allKept = () => idb('takes', 'readonly', (o) => o.getAll());
+const kept = (key) => idb('takes', 'readonly', (o) => o.get(key));
 const allKeys = () => idb('takes', 'readonly', (o) => o.getAllKeys());
+
+/**
+ * Every take, each one holding the key it is stored under.
+ *
+ * Walked with a cursor rather than asked for as a list of keys and a list of
+ * values. Those are two reads, and anything written between them — a take
+ * being saved, an upload marking one sent — leaves the lists a different
+ * length, after which every pair is off by one. What that did was hand a
+ * block of one song the recording belonging to another, and an upload then
+ * wrote that back, so a fan's DUMB HOT takes became their BEEP ones for good.
+ * A cursor cannot be misread that way: the value it yields is the value at
+ * the key it yields.
+ */
+function eachKept() {
+  return new Promise((res) => {
+    if (!store) return res([]);
+    const out = [];
+    let tx;
+    try {
+      tx = store.transaction('takes', 'readonly');
+    } catch (e) {
+      return res([]);
+    }
+    const req = tx.objectStore('takes').openCursor();
+    req.onsuccess = () => {
+      const cur = req.result;
+      if (!cur) return res(out);
+      out.push({ key: String(cur.key), val: cur.value });
+      cur.continue();
+    };
+    req.onerror = () => res(out);
+    tx.onabort = () => res(out);
+  });
+}
 const remember = (k, v) => idb('meta', 'readwrite', (o) => o.put(v, k));
 const recall = (k) => idb('meta', 'readonly', (o) => o.get(k));
 
@@ -1330,12 +1364,20 @@ const recall = (k) => idb('meta', 'readonly', (o) => o.get(k));
 async function restoreTakes() {
   if (!store) return 0;
 
-  const keys = (await allKeys()) || [];
-  const vals = (await allKept()) || [];
-  keys.forEach((k, i) => {
-    const v = vals[i];
-    if (!v || !String(k).startsWith(SONG + ':') || !v.blob) return;
-    const id = String(k).slice(SONG.length + 1);
+  const held = await eachKept();
+  held.forEach(({ key: k, val: v }) => {
+    if (!v || !k.startsWith(SONG + ':') || !v.blob) return;
+    const id = k.slice(SONG.length + 1);
+    /*
+     * And it has to agree about which take it is.
+     *
+     * A take written since this check existed carries the song and block it
+     * was recorded for. Where that disagrees with where it is filed, something
+     * has gone wrong that nobody could hear until it was in the video, so it
+     * is left alone rather than played as somebody else's. Takes from before
+     * carry no such stamp and are taken at their filing.
+     */
+    if (v.song !== undefined && (v.song !== SONG || v.id !== id)) return;
     /*
      * With how late the microphone was when it was recorded.
      *
@@ -1346,6 +1388,7 @@ async function restoreTakes() {
      * being a property of the phone rather than of any one take.
      */
     takes.set(id, {
+      id,
       blob: v.blob,
       url: URL.createObjectURL(v.blob),
       mime: v.mime,
@@ -2944,8 +2987,12 @@ async function record() {
       const old = takes.get(c.id);
       if (old) URL.revokeObjectURL(old.url);
       const n = (old ? old.n : 0) + 1;
-      takes.set(c.id, { blob, url: URL.createObjectURL(blob), mime: rec.mimeType || MIME, n, lag });
-      keep(`${SONG}:${c.id}`, { blob, mime: rec.mimeType || MIME, n, lag, sent: false });
+      takes.set(c.id, {
+        id: c.id, blob, url: URL.createObjectURL(blob), mime: rec.mimeType || MIME, n, lag,
+      });
+      keep(`${SONG}:${c.id}`, {
+        song: SONG, id: c.id, blob, mime: rec.mimeType || MIME, n, lag, sent: false,
+      });
       setStatus(t('gotIt'));
       showRig();
       $('btn-record').textContent = t(GUIDE ? 'redoGuide' : 'redo');
@@ -4503,11 +4550,25 @@ async function uploadAll() {
       // A block runs seconds, not minutes. Anything this size is a mistake,
       // and sending it would spend somebody else's room in the bucket.
       if (take.blob.size > 12 * 1024 * 1024) throw new Error('take too large to send');
+      /*
+       * And it has to be this block's take.
+       *
+       * The name it goes up under comes from the block, and the audio from
+       * whatever the map holds for it. If those two ever part company the
+       * upload is wrong in a way nobody finds until the video is cut, so it
+       * is refused here instead.
+       */
+      if (take.id !== undefined && take.id !== c.id) throw new Error('take does not match its block');
       await put('takes', `${SONG}/${c.id}/${sessionId}-${take.n}.webm`, take.blob, take.mime);
       uploaded.add(`${c.id}:${take.n}`);
-      keep(`${SONG}:${c.id}`, {
-        blob: take.blob, mime: take.mime, n: take.n, lag: take.lag, sent: true,
-      });
+      /*
+       * Marked as sent on the record that is already there, rather than
+       * written out again from memory. Writing it back was what turned a take
+       * held wrongly in memory into a take stored wrongly on the phone: the
+       * recording itself was never at fault, only what was believed about it.
+       */
+      const was = await kept(`${SONG}:${c.id}`);
+      if (was) await keep(`${SONG}:${c.id}`, { ...was, sent: true });
       sent += 1;
     } catch (e) {
       failed += 1;
