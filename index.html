@@ -2385,35 +2385,81 @@ function readingWanted() {
 }
 
 /**
+ * Where each step of a word ends, as a share of the word's width.
+ *
+ * Counting letters is not the same as measuring the word. 너와 나의 TIMEBOMB
+ * is four Hangul and eight Latin letters and two spaces, and by letters 나의
+ * ends a third of the way along while on screen it ends nearer two fifths. The
+ * colour then crawled across 너와 while 나의 was being sung and never covered
+ * 나의 at all before moving on.
+ *
+ * All-Hangul words, which is most of them, come out the same either way. It is
+ * a word welded across two scripts that needs measuring, and breaking a word by
+ * hand is what makes those.
+ *
+ * Measured once when the block is drawn, against the font the word is actually
+ * set in, and by walking the word's own text so the spaces between steps fall
+ * where they really fall.
+ */
+const ruler = document.createElement('canvas').getContext('2d');
+
+function stepEnds(node, beats) {
+  const said = node.textContent;
+  const cs = getComputedStyle(node);
+  ruler.font = `${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+  const full = ruler.measureText(said).width;
+  if (!full) return null;
+  const out = [];
+  let at = 0;
+  for (const [text] of beats) {
+    // The video's units carry their own trailing spaces, and the word they
+    // were welded into does not, so a step is looked for by what it shows.
+    const want = String(text).trim();
+    const found = want ? said.indexOf(want, at) : -1;
+    // A row whose steps are not its own text, which the reading row can be
+    // when it has none of its own. Letters are the best guess left.
+    if (found < 0) return null;
+    at = found + want.length;
+    out.push(ruler.measureText(said.slice(0, at)).width / full);
+  }
+  out[out.length - 1] = 1;
+  return out;
+}
+
+/**
  * How far the colour has run across one word, as a percentage of it.
  *
- * A word is often several steps of the video welded into one thing to read:
- * 감아, 봤지 and 만 are one word but three steps, and 만 alone is held a second
- * and a half. Sweeping the welded word evenly would run the colour past the
- * syllable izna is still singing, which is the thing a fan is watching. So
- * each step takes its own share of the width for its own length of time, and
- * the share is by how much of the word it is: the steps of a word are the same
- * script as each other, so their letters are the same width as each other.
+ * A word is often several steps welded into one thing to read: 감아, 봤지 and 만
+ * are one word but three steps, and 만 alone is held a second and a half.
+ * Sweeping the welded word evenly would run the colour past the syllable izna
+ * is still singing, which is the thing a fan is watching. So each step takes
+ * its own share of the width for its own length of time.
  *
  * A word of one step is the plain case and sweeps straight across.
  */
-function fillOf(w, beats, el) {
+function fillOf(w, beats, el, ends) {
   const from = PRE + w.t;
   if (el <= from) return 0;
   if (el >= from + w.d) return 100;
   if (!beats || beats.length < 2) return ((el - from) / w.d) * 100;
   const whole = beats.reduce((n, x) => n + x[0].length, 0);
   if (!whole) return ((el - from) / w.d) * 100;
-  let done = 0;
-  for (const [text, bt, bd] of beats) {
+  // Where each step ends, measured if the word was measurable and counted in
+  // letters if it was not.
+  const stop = ends || beats.reduce((acc, x) => {
+    acc.push((acc.length ? acc[acc.length - 1] : 0) + x[0].length / whole);
+    return acc;
+  }, []);
+  for (let i = 0; i < beats.length; i += 1) {
+    const [, bt, bd] = beats[i];
     const opens = PRE + bt;
+    const was = i ? stop[i - 1] : 0;
     // Before this step: the colour waits where the last one left it, which is
     // what the video does in the gap between two syllables.
-    if (el < opens) break;
-    if (el < opens + bd) return ((done + (text.length * (el - opens)) / bd) / whole) * 100;
-    done += text.length;
+    if (el < opens) return was * 100;
+    if (el < opens + bd) return (was + (stop[i] - was) * ((el - opens) / bd)) * 100;
   }
-  return (done / whole) * 100;
+  return 100;
 }
 
 /**
@@ -2508,6 +2554,8 @@ function paintChant(b) {
     // The two rows are cut into their own steps and are not always the same
     // ones, so each node carries the steps of the row it is in.
     n.beats = n.dataset.row === 'k' ? w.p : (w.rp || w.p);
+    // Measured here, once, rather than on every frame of the sweep.
+    n.ends = n.beats && n.beats.length > 1 ? stepEnds(n, n.beats) : null;
     flatNodes[+n.dataset.i].push(n);
   });
   clearFill();
@@ -2759,7 +2807,7 @@ function sweep(c, onDone, opts) {
       const across = el <= from ? 0 : el >= from + w.d ? 100 : ((el - from) / w.d) * 100;
       const now = w.c && across > 0 && across < 100;
       flatNodes[i].forEach((n) => {
-        const pct = fillOf(w, n.beats, el);
+        const pct = fillOf(w, n.beats, el, n.ends);
         if (n.fill !== undefined && Math.abs(pct - n.fill) < 0.6 && pct !== 0 && pct !== 100) return;
         n.fill = pct;
         n.style.setProperty('--p', pct.toFixed(1) + '%');
