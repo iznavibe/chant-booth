@@ -736,6 +736,8 @@
       <div class="tally"><b id="tally-n">0</b><span class="muted" id="tally-label"></span></div>
       <div class="tabs" id="done-tabs"></div>
       <p class="muted" data-t="tapAny">Tap any one to hear it back or record it again.</p>
+      <button class="ghost full" id="btn-all" data-t="hearAll">Hear it all together</button>
+      <p class="muted" id="all-note" hidden></p>
       <button class="primary full" id="btn-upload" data-t="upload">Upload my takes</button>
       <p class="muted" id="upload-note"></p>
     </div>
@@ -876,6 +878,12 @@ const EN = {
   myTakes: 'My takes',
   backToTakes: 'Back to my takes',
   yourTakes: 'Your takes',
+  hearAll: 'Hear it all together',
+  stopAll: 'Stop',
+  gathering: 'Putting it together…',
+  nothingToHear: 'Record a block first.',
+  allOf: 'Block {n} of {m}',
+  someQuiet: '{n} could not be played back on this phone, so they are music only.',
   tapAny: 'Tap any one to hear it back or record it again.',
   upload: 'Upload my takes',
   waiting: '{n} not sent yet. They stay on this device until you send them.',
@@ -966,6 +974,12 @@ const KO = {
   myTakes: '내 녹음',
   backToTakes: '내 녹음으로 돌아가기',
   yourTakes: '내 녹음',
+  hearAll: '전부 이어서 듣기',
+  stopAll: '정지',
+  gathering: '이어 붙이는 중…',
+  nothingToHear: '먼저 한 구간을 녹음해 주세요.',
+  allOf: '{m}개 중 {n}번째 구간',
+  someQuiet: '{n}개는 이 휴대폰에서 재생되지 않아 반주만 나와요.',
   tapAny: '눌러서 들어보거나 다시 녹음할 수 있어요.',
   upload: '녹음 보내기',
   waiting: '{n}개가 아직 안 갔어요. 보내기 전까지는 이 기기에만 있어요.',
@@ -1053,6 +1067,12 @@ const JA = {
   myTakes: '録音一覧',
   backToTakes: '録音一覧に戻る',
   yourTakes: '録音一覧',
+  hearAll: '通して聴く',
+  stopAll: '停止',
+  gathering: 'つなげています…',
+  nothingToHear: 'まず一つ録音してください。',
+  allOf: '{m} ブロック中 {n} 番目',
+  someQuiet: '{n} 件はこの端末で再生できないので、伴奏だけになります。',
   tapAny: 'タップすると聞き直しも録り直しもできます。',
   upload: '録音を送る',
   waiting: '{n} 件がまだ送信されていません。送るまではこの端末の中だけです。',
@@ -4117,6 +4137,7 @@ function step(by) {
 
 function finish() {
   stopPlaying();
+  if (typeof stopAll === 'function') stopAll();
   $('btn-done').textContent = t('myTakes');
   const n = takes.size;
   $('tally-n').textContent = n;
@@ -4132,11 +4153,133 @@ function finish() {
   show('done');
 }
 
+/* ---------------- hearing the lot ---------------- */
+
+/*
+ * Every block a fan has recorded, one after another, with the music.
+ *
+ * Not built from a copy of the song. A track found elsewhere is a different
+ * master, a different edit, or a second and a half late, and every block would
+ * have to be lined up against it by hand. The guide clips are already cut from
+ * the video these timings came from and already sit where the block does, so
+ * putting a fan's voice back on top of them needs no alignment at all: it is
+ * the same pairing they heard when they recorded, played one block after the
+ * next.
+ *
+ * Everything is given its moment on the audio clock in one go, the way a
+ * single block already is, rather than each block being started by a timer
+ * when the one before it ends. A timer that fires a little late leaves a gap
+ * a listener hears, and thirty of them accumulate.
+ */
+const ALL_GAP = 0.4;
+
+let allMarks = [];   // where each block sits in the run, for showing along
+let allTicks = null;
+let allEnds = 0;
+
+function stopAll() {
+  if (allTicks) { clearInterval(allTicks); allTicks = null; }
+  allMarks = [];
+  stopPlaying();
+  $('btn-all').textContent = t('hearAll');
+  $('all-note').hidden = true;
+}
+
+async function hearAll() {
+  if (allTicks) { stopAll(); return; }
+  const mine = CHANTS.map((c, i) => ({ c, i, take: takes.get(c.id) })).filter((x) => x.take);
+  if (!mine.length) {
+    $('all-note').hidden = false;
+    $('all-note').textContent = t('nothingToHear');
+    return;
+  }
+
+  $('btn-all').disabled = true;
+  $('all-note').hidden = false;
+  $('all-note').textContent = t('gathering');
+  stopPlaying();
+
+  try {
+    const ctx = await wake();
+    await lagReady();
+
+    /*
+     * Read once, then everything is placed against that one reading. Asking
+     * the clock again between blocks would fold each block's own preparing
+     * time into where the next one starts.
+     */
+    const pieces = [];
+    for (const { c, i, take } of mine) {
+      const where = guideAt[c.id];
+      const buf = where ? await guideBuffer(where.file) : null;
+      const voice = await prepare(take.blob);
+      pieces.push({ c, i, take, where, buf, voice });
+    }
+
+    const opens = ctx.currentTime + AHEAD + 0.05;
+    let head = opens;
+    let quiet = 0;
+    allMarks = [];
+
+    pieces.forEach(({ c, i, take, where, buf, voice }) => {
+      const lead = (buf && where.lead) || 0;
+      const hold = buf && where.hold > 0 ? where.hold : 0;
+      // A take that could not be decoded plays through an element instead, and
+      // an element cannot be given a moment: it starts when it is told to. So
+      // that block runs as music alone rather than as somebody's voice landing
+      // in the wrong place.
+      const canPlace = voice.seconds > 0;
+      if (!canPlace) quiet += 1;
+
+      if (buf) playWindow(buf, where.from, where.len, lead, true, GUIDE_UNDER, head);
+      if (canPlace) {
+        voice.start(true, Math.max(0, (take.lag > 0 ? take.lag : 0) + NUDGE), head + hold);
+      }
+
+      const runs = Math.max(
+        buf ? lead + where.len : 0,
+        canPlace ? hold + Math.max(0, voice.seconds - (take.lag > 0 ? take.lag : 0)) : 0,
+        0.5,
+      );
+      allMarks.push({ i, from: head - opens, to: head - opens + runs });
+      head += runs + ALL_GAP;
+    });
+
+    allEnds = head - opens;
+    $('btn-all').textContent = t('stopAll');
+    $('btn-all').disabled = false;
+
+    // Counted from the moment everything was placed against, not from a second
+    // reading of the clock: the two are a scheduling apart, and that showed as
+    // the first block never being reached.
+    const mark = stops;
+    allTicks = setInterval(() => {
+      // Something else asked for the speaker, so this run is over whether or
+      // not it had finished.
+      if (stops !== mark) { stopAll(); return; }
+      const el = audio().currentTime - opens;
+      if (el >= allEnds) { stopAll(); return; }
+      // Before the first block has opened it is still the first block.
+      const now = allMarks.filter((m) => el >= m.from).pop() || allMarks[0];
+      $('all-note').textContent = t('allOf', { n: now.i + 1, m: CHANTS.length })
+        + (quiet ? ' · ' + t('someQuiet', { n: quiet }) : '');
+    }, 200);
+  } catch (err) {
+    stopAll();
+    $('all-note').hidden = false;
+    $('all-note').textContent = String(err.message || err);
+  }
+  $('btn-all').disabled = false;
+}
+
+$('btn-all').addEventListener('click', hearAll);
+
 /* ---------------- hearing one back ---------------- */
 
 let sheetAt = -1;
 
 function openSheet(i) {
+  stopAll();
   sheetAt = i;
   const c = CHANTS[i];
   $('sheet-no').textContent = t('blockOf', { n: i + 1, m: CHANTS.length });
