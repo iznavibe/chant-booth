@@ -65,6 +65,7 @@ const p = JSON.parse(fs.readFileSync(src, 'utf8'));
  */
 const NOT_CHANTS = {
   timebomb: ['(Tic tic tic tic boom)'],
+  izna: ["(That's me, that's me, that's me)"],
 };
 
 // Spaces removed, so a line is recognised however it happens to be spaced.
