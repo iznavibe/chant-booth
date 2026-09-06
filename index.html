@@ -2645,6 +2645,20 @@ function showTimes() {
 let sweepRun = 0;
 function stopSweep() { sweepRun += 1; }
 
+/**
+ * The ring that says come in now.
+ *
+ * Taken off and put back with a reflow between, because an animation that is
+ * already running does not start again just because its class was added a
+ * second time, and two entries can be a second apart.
+ */
+function ring() {
+  const el = $('stage');
+  el.classList.remove('go');
+  void el.offsetWidth;
+  el.classList.add('go');
+}
+
 function sweep(c, onDone, opts) {
   const live = !!(opts && opts.live);
   const run = ++sweepRun;
@@ -2652,6 +2666,26 @@ function sweep(c, onDone, opts) {
   const total = PRE + spanOf(c) + tailOf(c);
   const t0 = performance.now();
   let entered = false;
+  /*
+   * The moments a fan has to come in, after the first.
+   *
+   * A block is not one shout. It answers, waits through a line of izna's, and
+   * answers again, and the second entry arrives with nothing to mark it: the
+   * ring at the end of the count said "now" once and then never again.
+   *
+   * A run of chant words is one moment, not one per word. 마이, 방지민, 코코,
+   * 유사랑 is a single roll call to come in on, and a ring around each name
+   * would be a strobe. Anything already covered by the count-in's own ring is
+   * left to it.
+   */
+  const entries = [];
+  flatWords.filter((w) => w.c).sort((a, b) => a.t - b.t).forEach((w) => {
+    const last = entries[entries.length - 1];
+    if (last && w.t <= last.until + 0.3) last.until = Math.max(last.until, w.t + w.d);
+    else entries.push({ at: w.t, until: w.t + w.d });
+  });
+  const cues = entries.map((e) => e.at).filter((at) => at > 0.3);
+  let nextCue = 0;
   let loudest = 0;
   // Last drawn fill per word, so a frame only touches what moved.
 
@@ -2669,8 +2703,14 @@ function sweep(c, onDone, opts) {
       entered = true;
       $('lead-bar').style.width = '0%';
       $('lead').classList.remove('on');
-      $('stage').classList.add('go');
-      setTimeout(() => $('stage').classList.remove('go'), 500);
+      ring();
+      setStatus(t('shout'), true);
+    }
+
+    // Every entry after the first gets the same ring the count-in gave.
+    while (nextCue < cues.length && el >= PRE + cues[nextCue]) {
+      nextCue += 1;
+      ring();
       setStatus(t('shout'), true);
     }
 
