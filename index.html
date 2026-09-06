@@ -245,15 +245,14 @@
    *
    * The ring is around the whole card and lights at the same moment as the
    * word it is warning about, which is too late to be a warning. These fill
-   * one at a time on the way in, the third arriving on the beat to sing. They
-   * hold their place whether anything is coming or not, so the eye learns
-   * where to sit rather than hunting for them.
+   * one at a time on the way in, the third arriving on the beat to sing, and
+   * they stay lit for as long as there is shouting to do.
    *
-   * They stand up the right-hand side of the words and fill from the bottom,
-   * beside what is being read rather than above or below it. The column runs
-   * out into the card's own padding and the words give up ten pixels either
-   * side, which is what keeps a long line from running into the dots while
-   * leaving the block centred.
+   * The column stands up the right-hand side of the words, beside the line the
+   * shouting starts on, and moves to the next one during the rest before it.
+   * It runs out into the card's own padding and the words give up ten pixels
+   * either side, which is what keeps a long line from running into the dots
+   * while leaving the block centred.
    */
   .blockrow { position: relative; margin: 0 -10px; padding: 0 20px; }
   .cue {
@@ -2588,6 +2587,8 @@ function paintChant(b) {
   const GAP = { 1: 10, 2: 20, 3: 17, 4: 14 };
   $('block').style.setProperty('--gap', (GAP[b.lines.length] || 11) + 'px');
   $('block').innerHTML = rows.join('');
+  // The column stands beside a line, and this block has different ones.
+  $('cue').style.top = '';
 
   fitLines();
 
@@ -2796,6 +2797,16 @@ const HOLD_OVER = 2;
  */
 const CUE_LEAD = 0.9;
 
+/** Stand the column beside the line a word is on. */
+function cueBy(i) {
+  const node = (flatNodes[i] || []).find((n) => n.dataset.row === 'k');
+  const line = node && node.closest('.ln');
+  if (!line) return;
+  const row = line.closest('.blockrow').getBoundingClientRect();
+  const on = line.getBoundingClientRect();
+  $('cue').style.top = `${on.top + on.height / 2 - row.top}px`;
+}
+
 /** Light the first n of the three. */
 function cueLit(n) {
   const dots = $('cue').children;
@@ -2825,9 +2836,28 @@ function sweep(c, onDone, opts) {
     else runs.push({ at: w.t, until: w.t + w.d });
   });
   runs.forEach((r) => { r.held = r.until - r.at >= HOLD_OVER; });
+  /*
+   * Which stretches get counted in, and the word each count stands beside.
+   *
+   * Two stretches close enough together leave no room to count the second one
+   * in: the dots would read three, drop to nothing and refill inside half a
+   * second, which is flicker rather than warning. Those join up, so there is
+   * one count on the way into the pair and the dots stay lit across both.
+   */
+  const cues = [];
+  runs.forEach((r) => {
+    const last = cues[cues.length - 1];
+    if (last && r.at - last.until < CUE_LEAD) { last.until = Math.max(last.until, r.until); return; }
+    cues.push({
+      at: r.at,
+      until: r.until,
+      word: flatWords.findIndex((w) => w.c && Math.abs(w.t - r.at) < 0.001),
+    });
+  });
   let shouting = false;
   let flared = -1;
   let lit = -1;
+  let beside = -1;
   let loudest = 0;
   // Last drawn fill per word, so a frame only touches what moved.
 
@@ -2853,11 +2883,14 @@ function sweep(c, onDone, opts) {
      * there is shouting to do so the third one is seen rather than guessed at.
      */
     const pos = el - PRE;
-    const soon = runs.find((r) => pos < r.at && pos > r.at - CUE_LEAD);
-    const going = runs.find((r) => pos >= r.at && pos <= r.until);
+    const going = cues.findIndex((q) => pos >= q.at && pos <= q.until);
+    const soon = cues.findIndex((q) => pos < q.at && pos > q.at - CUE_LEAD);
+    // The stretch being counted, or failing that the next one there is.
+    const which = going >= 0 ? going : cues.findIndex((q) => pos < q.until);
+    if (which >= 0 && which !== beside) { beside = which; cueBy(cues[which].word); }
     let want = 0;
-    if (going) want = 3;
-    else if (soon) want = 1 + Math.floor((CUE_LEAD - (soon.at - pos)) / (CUE_LEAD / 2));
+    if (going >= 0) want = 3;
+    else if (soon >= 0) want = 1 + Math.floor((CUE_LEAD - (cues[soon].at - pos)) / (CUE_LEAD / 2));
     if (want !== lit) { lit = want; cueLit(want); }
 
     /*
