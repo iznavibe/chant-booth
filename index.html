@@ -715,6 +715,7 @@
                  style="font:inherit;color:var(--muted);background:var(--sunk);
                         border:1px solid var(--edge);border-radius:10px;padding:8px 10px">
           <button class="ghost full" id="word-cut-do">Break it up</button>
+          <button class="ghost full" id="word-join" hidden>Put it back together</button>
         </div>
         <div class="row" id="word-acts" hidden>
           <button class="ghost" id="word-reset">Back to the video</button>
@@ -3839,42 +3840,56 @@ function showWord() {
   $('wd-at').textContent = w.d.toFixed(2) + 's';
   $('word-reset').disabled = !moved;
 
-  /*
-   * The word as the song file has it, whether or not it is currently in
-   * pieces. That is what the fields are edited against, so breaking a word a
-   * second way is done to the original rather than to one of its halves.
-   */
-  const from = wholeWord(picked.line, picked.i);
-  $('word-cut').hidden = !from;
-  if (from) {
-    // Shown as it is broken now, not as the file has it, so what is in the
-    // field is what is on screen and moving a space moves the break.
-    const now = wordSplits[wordKey(CHANTS[at].id, picked.line, from.at)];
-    const said = now ? now.parts.map((p) => p.k).join(' ') : from.w.k;
-    const read = now ? now.parts.map((p) => p.r).filter(Boolean).join(' ') : (from.w.r || '');
-    if (document.activeElement !== $('word-text')) $('word-text').value = said;
-    if (document.activeElement !== $('word-read')) $('word-read').value = read;
-    $('word-cut-say').textContent = now
-      ? `In ${now.parts.length} pieces. Move the spaces, or take them out to put it back.`
+  const here = pieceUnder(picked.line, picked.i);
+  $('word-cut').hidden = !here;
+  if (here) {
+    /*
+     * The piece that was tapped, not the word it came out of.
+     *
+     * Breaking 감아봤지만 gives 감아 and 봤지만, and breaking 봤지만 again is the
+     * obvious next thing to want. Showing the whole word here meant typing
+     * "봤 지만" was read as an attempt to rewrite it, and refused.
+     */
+    const piece = here.parts[here.n];
+    if (document.activeElement !== $('word-text')) $('word-text').value = piece.k;
+    if (document.activeElement !== $('word-read')) $('word-read').value = piece.r || '';
+    $('word-cut-say').textContent = here.split
+      ? `"${here.from.k}" is in ${here.parts.length} pieces. Put a space in this one to break it again.`
       : 'Put spaces where the word should break';
-    $('word-cut-do').textContent = now ? 'Break it again' : 'Break it up';
+    $('word-join').hidden = !here.split;
+    $('word-join').textContent = `Put "${here.from.k}" back together`;
   }
 }
 
 /**
- * The untouched word behind whatever is picked, and where it sits.
+ * The piece that is picked, and the run of pieces it belongs to.
  *
- * A piece of a broken word is not in the song file at all, so the thing to
- * edit is the word it came out of. Counted in whole words, which is how a
- * break is named.
+ * A word may already be in pieces, and picking one of them means working on
+ * that one. This says which whole word is behind it, which of its pieces was
+ * tapped, and what all of them currently are.
  */
-function wholeWord(line, i) {
+function pieceUnder(line, i) {
   const b = CHANTS[at];
-  const held = splitHolding(line, i);
-  const nth = held ? held.at : splitBeforeCount(line, i);
+  const l = b.lines[line];
   const file = builtChants.find((c) => c.id === b.id);
-  const w = file && file.lines[line] && file.lines[line].w[nth];
-  return w ? { w, at: nth } : null;
+  if (!l || !file) return null;
+  let n = 0;
+  let whole = 0;
+  while (n < l.w.length) {
+    const said = wordSplits[wordKey(b.id, line, whole)];
+    const took = said ? said.parts.length : 1;
+    if (i >= n && i < n + took) {
+      const from = file.lines[line] && file.lines[line].w[whole];
+      if (!from) return null;
+      const parts = said
+        ? said.parts.map((p) => ({ ...p }))
+        : [{ k: from.k, r: from.r, t: from.t, d: from.d }];
+      return { whole, from, parts, n: i - n, split: !!said };
+    }
+    n += took;
+    whole += 1;
+  }
+  return null;
 }
 
 /**
@@ -3897,11 +3912,25 @@ function splitHolding(line, i) {
   return null;
 }
 
+$('word-join').addEventListener('click', () => {
+  if (!picked) return;
+  const here = pieceUnder(picked.line, picked.i);
+  if (!here || !here.split) return;
+  delete wordSplits[wordKey(CHANTS[at].id, picked.line, here.whole)];
+  picked = null;
+  $('guide-note').textContent = `"${here.from.k}" is one word again.`;
+  rebuildLine();
+  showWord();
+  paintChant(CHANTS[at]);
+  showPlacing();
+});
+
 $('word-cut-do').addEventListener('click', () => {
   if (!picked) return;
   const b = CHANTS[at];
-  const from = wholeWord(picked.line, picked.i);
-  if (!from) return;
+  const here = pieceUnder(picked.line, picked.i);
+  if (!here) return;
+  const piece = here.parts[here.n];
 
   const said = $('word-text').value;
   const read = $('word-read').value;
@@ -3911,24 +3940,27 @@ $('word-cut-do').addEventListener('click', () => {
    * being sung with no way to notice.
    */
   const tight = (t) => t.replace(/\s+/g, '');
-  if (tight(said) !== tight(from.w.k)) {
-    $('guide-note').textContent = 'That changes the word. Only the spaces in it can move.';
+  if (tight(said) !== tight(piece.k)) {
+    $('guide-note').textContent = `That changes the word. Only the spaces in "${piece.k}" can move.`;
     return;
   }
-  if (read && tight(read) !== tight(from.w.r || '')) {
+  if (read && piece.r && tight(read) !== tight(piece.r)) {
     $('guide-note').textContent = 'That changes the reading. Only the spaces in it can move.';
     return;
   }
 
-  const key = wordKey(b.id, picked.line, from.at);
   const bits = said.split(/\s+/).filter(Boolean);
-  const parts = partsFrom(from.w, bits, read.split(/\s+/).filter(Boolean));
-  if (parts) wordSplits[key] = { k: from.w.k, parts };
-  else delete wordSplits[key];
+  const sub = partsFrom(piece, bits, read.split(/\s+/).filter(Boolean));
+  if (!sub) {
+    $('guide-note').textContent = `Put a space in "${piece.k}" to break it.`;
+    return;
+  }
+  // This piece becomes the pieces it was broken into; the rest stay as they are.
+  const parts = here.parts.slice();
+  parts.splice(here.n, 1, ...sub);
+  wordSplits[wordKey(b.id, picked.line, here.whole)] = { k: here.from.k, parts };
   picked = null;
-  $('guide-note').textContent = parts
-    ? `"${from.w.k}" is ${parts.length} words here.`
-    : `"${from.w.k}" is one word again.`;
+  $('guide-note').textContent = `"${here.from.k}" is ${parts.length} words here.`;
   /*
    * Rebuilt from the song file, since breaking or rejoining changes what every
    * later word in the line is called by.
