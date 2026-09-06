@@ -249,15 +249,21 @@
    * hold their place whether anything is coming or not, so the eye learns
    * where to sit rather than hunting for them.
    *
-   * Above the words rather than below, because a block runs to anything from
-   * one line to four and only the top of it stays put. Reading and counting in
-   * then happen in one look instead of two.
+   * They stand up the right-hand side of the words and fill from the bottom,
+   * beside what is being read rather than above or below it. The column runs
+   * out into the card's own padding and the words give up ten pixels either
+   * side, which is what keeps a long line from running into the dots while
+   * leaving the block centred.
    */
+  .blockrow { position: relative; margin: 0 -10px; padding: 0 20px; }
   .cue {
+    position: absolute;
+    right: 0;
+    top: 50%;
+    transform: translateY(-50%);
     display: flex;
-    justify-content: center;
+    flex-direction: column-reverse;
     gap: 7px;
-    margin-top: 12px;
     pointer-events: none;
   }
   .cue i {
@@ -782,8 +788,10 @@
     <div class="stage" id="stage" style="margin-top:14px">
       <p class="legend" id="legend"></p>
       <span class="badge" id="chant-badge"></span>
-      <div class="cue" id="cue" aria-hidden="true"><i></i><i></i><i></i></div>
-      <div class="block" id="block"></div>
+      <div class="blockrow">
+        <div class="block" id="block"></div>
+        <div class="cue" id="cue" aria-hidden="true"><i></i><i></i><i></i></div>
+      </div>
       <div class="lead" id="lead"><b id="lead-bar"></b></div>
       <div class="meter"><i id="meter-fill"></i></div>
       <div class="level" id="level" hidden><i id="level-bar"></i></div>
