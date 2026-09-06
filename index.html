@@ -706,7 +706,16 @@
           <span class="at" id="wd-at">0.00s</span>
           <button class="ghost icon" id="wd-more">+</button>
         </div>
-        <button class="ghost full" id="word-split" hidden>Split into words</button>
+        <div id="word-cut" hidden style="display:flex;flex-direction:column;gap:6px">
+          <span class="muted" id="word-cut-say">Put spaces where the word should break</span>
+          <input id="word-text" spellcheck="false" autocomplete="off"
+                 style="font:inherit;color:var(--ink);background:var(--sunk);
+                        border:1px solid var(--edge);border-radius:10px;padding:8px 10px">
+          <input id="word-read" spellcheck="false" autocomplete="off"
+                 style="font:inherit;color:var(--muted);background:var(--sunk);
+                        border:1px solid var(--edge);border-radius:10px;padding:8px 10px">
+          <button class="ghost full" id="word-cut-do">Break it up</button>
+        </div>
         <div class="row" id="word-acts" hidden>
           <button class="ghost" id="word-reset">Back to the video</button>
           <button class="primary" id="word-save">Save the words</button>
@@ -2815,9 +2824,19 @@ function applySplits() {
 
 /** Break a word at its spaces, sharing its time out by length. */
 function partsOf(w) {
-  const bits = w.k.split(/\s+/).filter(Boolean);
+  return partsFrom(w, w.k.split(/\s+/).filter(Boolean),
+    w.r ? w.r.split(/\s+/).filter(Boolean) : []);
+}
+
+/**
+ * Break a word into the pieces it is given, sharing its time out by length.
+ *
+ * The pieces come from wherever the spaces are put, which need not be where
+ * the video happened to leave any: 감아봤지만 is one unit on screen and two
+ * words to sing, and there is nothing in the file to break it at.
+ */
+function partsFrom(w, bits, romaji) {
   if (bits.length < 2) return null;
-  const romaji = w.r ? w.r.split(/\s+/).filter(Boolean) : [];
   const whole = bits.reduce((n, x) => n + x.length, 0);
   let at = w.t;
   return bits.map((k, i) => {
@@ -3705,13 +3724,42 @@ function showWord() {
   $('wd-at').textContent = w.d.toFixed(2) + 's';
   $('word-reset').disabled = !moved;
 
-  // Either it can be broken up, or it is a piece of something that was.
-  const bits = partsOf(w);
-  const joined = splitHolding(picked.line, picked.i);
-  $('word-split').hidden = !bits && !joined;
-  $('word-split').textContent = joined
-    ? `Put "${joined.said.k}" back together`
-    : (bits ? `Split into ${bits.length} words` : '');
+  /*
+   * The word as the song file has it, whether or not it is currently in
+   * pieces. That is what the fields are edited against, so breaking a word a
+   * second way is done to the original rather than to one of its halves.
+   */
+  const from = wholeWord(picked.line, picked.i);
+  $('word-cut').hidden = !from;
+  if (from) {
+    // Shown as it is broken now, not as the file has it, so what is in the
+    // field is what is on screen and moving a space moves the break.
+    const now = wordSplits[wordKey(CHANTS[at].id, picked.line, from.at)];
+    const said = now ? now.parts.map((p) => p.k).join(' ') : from.w.k;
+    const read = now ? now.parts.map((p) => p.r).filter(Boolean).join(' ') : (from.w.r || '');
+    if (document.activeElement !== $('word-text')) $('word-text').value = said;
+    if (document.activeElement !== $('word-read')) $('word-read').value = read;
+    $('word-cut-say').textContent = now
+      ? `In ${now.parts.length} pieces. Move the spaces, or take them out to put it back.`
+      : 'Put spaces where the word should break';
+    $('word-cut-do').textContent = now ? 'Break it again' : 'Break it up';
+  }
+}
+
+/**
+ * The untouched word behind whatever is picked, and where it sits.
+ *
+ * A piece of a broken word is not in the song file at all, so the thing to
+ * edit is the word it came out of. Counted in whole words, which is how a
+ * break is named.
+ */
+function wholeWord(line, i) {
+  const b = CHANTS[at];
+  const held = splitHolding(line, i);
+  const nth = held ? held.at : splitBeforeCount(line, i);
+  const file = builtChants.find((c) => c.id === b.id);
+  const w = file && file.lines[line] && file.lines[line].w[nth];
+  return w ? { w, at: nth } : null;
 }
 
 /**
@@ -3734,25 +3782,38 @@ function splitHolding(line, i) {
   return null;
 }
 
-$('word-split').addEventListener('click', () => {
-  const w = pickedWord();
-  if (!w) return;
+$('word-cut-do').addEventListener('click', () => {
+  if (!picked) return;
   const b = CHANTS[at];
-  const joined = splitHolding(picked.line, picked.i);
-  if (joined) {
-    delete wordSplits[wordKey(b.id, picked.line, joined.at)];
-    picked = null;
-  } else {
-    const bits = partsOf(w);
-    if (!bits) return;
-    /*
-     * Named by where the whole word sits, which is its place counted in whole
-     * words rather than in pieces, so the key means the same thing before and
-     * after the line is broken.
-     */
-    const before = splitBeforeCount(picked.line, picked.i);
-    wordSplits[wordKey(b.id, picked.line, before)] = { k: w.k, parts: bits };
+  const from = wholeWord(picked.line, picked.i);
+  if (!from) return;
+
+  const said = $('word-text').value;
+  const read = $('word-read').value;
+  /*
+   * Spaces may be moved; nothing else may. The row has to go on saying what
+   * the video says, and a word quietly retyped here would differ from the one
+   * being sung with no way to notice.
+   */
+  const tight = (t) => t.replace(/\s+/g, '');
+  if (tight(said) !== tight(from.w.k)) {
+    $('guide-note').textContent = 'That changes the word. Only the spaces in it can move.';
+    return;
   }
+  if (read && tight(read) !== tight(from.w.r || '')) {
+    $('guide-note').textContent = 'That changes the reading. Only the spaces in it can move.';
+    return;
+  }
+
+  const key = wordKey(b.id, picked.line, from.at);
+  const bits = said.split(/\s+/).filter(Boolean);
+  const parts = partsFrom(from.w, bits, read.split(/\s+/).filter(Boolean));
+  if (parts) wordSplits[key] = { k: from.w.k, parts };
+  else delete wordSplits[key];
+  picked = null;
+  $('guide-note').textContent = parts
+    ? `"${from.w.k}" is ${parts.length} words here.`
+    : `"${from.w.k}" is one word again.`;
   /*
    * Rebuilt from the song file, since breaking or rejoining changes what every
    * later word in the line is called by.
