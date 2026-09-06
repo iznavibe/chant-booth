@@ -240,7 +240,36 @@
   .pip.done { background: var(--mint); }
   .pip.now { background: var(--pink); }
 
+  /*
+   * Three dots over the word the shouting starts on.
+   *
+   * The ring is around the whole card, so it can say that something is
+   * happening but not where or quite when. These sit on the word itself and
+   * fill one at a time over the second before it, so the third arriving is the
+   * moment. Nothing sounds while the mic is open, and this is the only warning
+   * there is.
+   */
+  .cue {
+    position: absolute;
+    display: flex;
+    gap: 5px;
+    transform: translate(-50%, -100%);
+    pointer-events: none;
+    z-index: 2;
+  }
+  .cue i {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--muted);
+    opacity: .3;
+    transition: background .12s linear, opacity .12s linear, transform .12s ease-out;
+  }
+  .cue i.on { background: var(--pink); opacity: 1; transform: scale(1.35); }
+  @media (prefers-reduced-motion: reduce) { .cue i { transition: none; } }
+
   .stage {
+    position: relative;
     background: linear-gradient(170deg, var(--pink-wash), var(--card) 70%);
     border: 1px solid var(--edge);
     border-radius: var(--radius);
@@ -749,6 +778,7 @@
     <div class="pips" id="pips"></div>
 
     <div class="stage" id="stage" style="margin-top:14px">
+      <div class="cue" id="cue" hidden aria-hidden="true"><i></i><i></i><i></i></div>
       <p class="legend" id="legend"></p>
       <span class="badge" id="chant-badge"></span>
       <div class="block" id="block"></div>
@@ -2717,6 +2747,7 @@ let sweepRun = 0;
 function stopSweep() {
   sweepRun += 1;
   $('stage').classList.remove('shout');
+  $('cue').hidden = true;
 }
 
 /**
@@ -2745,6 +2776,30 @@ function flare() {
  */
 const HOLD_OVER = 2;
 
+/*
+ * How long the dots take to fill.
+ *
+ * Just under a second, near enough the count-in's own length that a fan meets
+ * the same warning twice and learns it once. Three of them, one every third of
+ * that, so the third lighting is the word arriving.
+ */
+const CUE_LEAD = 0.9;
+
+/** Put the dots above a word, in the card's own coordinates. */
+function cueOver(node) {
+  const cue = $('cue');
+  const stage = $('stage').getBoundingClientRect();
+  const on = node.getBoundingClientRect();
+  cue.style.left = `${on.left - stage.left + on.width / 2}px`;
+  cue.style.top = `${on.top - stage.top - 5}px`;
+}
+
+/** How many of the three are lit, given how close the shouting is. */
+function cueLit(n) {
+  const dots = $('cue').children;
+  for (let i = 0; i < dots.length; i += 1) dots[i].classList.toggle('on', i < n);
+}
+
 function sweep(c, onDone, opts) {
   const live = !!(opts && opts.live);
   const run = ++sweepRun;
@@ -2768,8 +2823,16 @@ function sweep(c, onDone, opts) {
     else runs.push({ at: w.t, until: w.t + w.d });
   });
   runs.forEach((r) => { r.held = r.until - r.at >= HOLD_OVER; });
+  /*
+   * The word each stretch starts on, so the dots know where to sit. Held as an
+   * index into the flat list, since that is what the nodes are keyed by.
+   */
+  runs.forEach((r) => {
+    r.word = flatWords.findIndex((w) => w.c && Math.abs(w.t - r.at) < 0.001);
+  });
   let shouting = false;
   let flared = -1;
+  let cueing = -1;
   let loudest = 0;
   // Last drawn fill per word, so a frame only touches what moved.
 
@@ -2788,6 +2851,26 @@ function sweep(c, onDone, opts) {
       $('lead-bar').style.width = '0%';
       $('lead').classList.remove('on');
       setStatus(t('shout'), true);
+    }
+
+    /*
+     * The dots fill over the second before a stretch of shouting and are gone
+     * the moment it starts, which the ring and the word itself then carry.
+     */
+    const pos = el - PRE;
+    const soon = runs.findIndex((r) => pos < r.at && pos > r.at - CUE_LEAD && r.word >= 0);
+    if (soon !== cueing) {
+      cueing = soon;
+      $('cue').hidden = soon < 0;
+      if (soon >= 0) {
+        const node = (flatNodes[runs[soon].word] || []).find((n) => n.dataset.row === 'k');
+        if (node) cueOver(node);
+        else { $('cue').hidden = true; cueing = -1; }
+      }
+    }
+    if (cueing >= 0) {
+      const left = runs[cueing].at - pos;
+      cueLit(Math.min(3, Math.max(0, Math.ceil((CUE_LEAD - left) / (CUE_LEAD / 3)))));
     }
 
     /*
@@ -2831,6 +2914,7 @@ function sweep(c, onDone, opts) {
       // Leave the block sung through rather than snapping back to nothing.
       flatNodes.forEach((ns) => ns.forEach((n) => n.classList.remove('now')));
       $('stage').classList.remove('shout');
+      $('cue').hidden = true;
       $('meter-fill').style.width = '0%';
       $('lead').classList.remove('on');
       $('level').hidden = true;
