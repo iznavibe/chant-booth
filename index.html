@@ -247,7 +247,6 @@
     padding: 26px 20px;
     text-align: center;
     box-shadow: var(--shadow);
-    transition: box-shadow .16s ease-out;
   }
   /* A block as it reads in the video: the original, its romaji underneath,
      and the shouted parts standing out from the sung ones. */
@@ -506,7 +505,20 @@
     0%   { box-shadow: var(--shadow), 0 0 0 0 var(--pink); }
     100% { box-shadow: var(--shadow), 0 0 0 16px rgba(253, 83, 143, 0); }
   }
-  .stage.shout { box-shadow: var(--shadow), 0 0 0 8px rgba(253, 83, 143, .45); }
+  /*
+   * The ring rises before it lands.
+   *
+   * Nothing sounds while the mic is open, so this is the only warning a fan
+   * gets, and arriving at full from nothing gave them none: by the time it
+   * said now, now had started. It comes up over the second before instead, so
+   * the moment is met rather than reacted to. Driven a frame at a time from
+   * the sweep rather than transitioned, since it has to keep step with a word
+   * that is already moving.
+   */
+  .stage {
+    box-shadow: var(--shadow),
+      0 0 0 calc(var(--warm, 0) * 9px) rgba(253, 83, 143, calc(var(--warm, 0) * .5));
+  }
   @media (prefers-reduced-motion: reduce) {
     .stage { transition: none; }
     .stage.go { animation: none; }
@@ -2716,7 +2728,7 @@ function showTimes() {
 let sweepRun = 0;
 function stopSweep() {
   sweepRun += 1;
-  $('stage').classList.remove('shout');
+  $('stage').style.setProperty('--warm', '0');
 }
 
 /**
@@ -2745,6 +2757,15 @@ function flare() {
  */
 const HOLD_OVER = 2;
 
+/*
+ * How long the ring takes to come up before the shouting starts.
+ *
+ * A second is the same beat the count-in uses, so the two say the same thing
+ * in the same length of time, and a fan who has met one already knows the
+ * other. Shorter than that and it is a flash with extra steps.
+ */
+const WARM_UP = 1;
+
 function sweep(c, onDone, opts) {
   const live = !!(opts && opts.live);
   const run = ++sweepRun;
@@ -2768,8 +2789,8 @@ function sweep(c, onDone, opts) {
     else runs.push({ at: w.t, until: w.t + w.d });
   });
   runs.forEach((r) => { r.held = r.until - r.at >= HOLD_OVER; });
-  let shouting = false;
   let flared = -1;
+  let warm = -1;
   let loudest = 0;
   // Last drawn fill per word, so a frame only touches what moved.
 
@@ -2791,15 +2812,27 @@ function sweep(c, onDone, opts) {
     }
 
     /*
-     * A long stretch keeps the ring up for as long as it lasts; a quick one
-     * flares as it begins and is over before the flare is.
+     * How lit the ring is: up over the second before a stretch of shouting,
+     * held there while a long one lasts, and let go across a short one, which
+     * the flare carries instead.
      */
-    const inRun = runs.findIndex((r) => el >= PRE + r.at && el <= PRE + r.until);
-    const now = inRun >= 0 && runs[inRun].held;
-    if (now !== shouting) {
-      shouting = now;
-      $('stage').classList.toggle('shout', now);
+    const pos = el - PRE;
+    let want = 0;
+    for (const r of runs) {
+      if (pos > r.until) continue;
+      if (pos >= r.at) {
+        want = r.held ? 1 : Math.max(0, 1 - (pos - r.at) / Math.max(0.3, r.until - r.at));
+      } else if (pos > r.at - WARM_UP) {
+        want = (pos - (r.at - WARM_UP)) / WARM_UP;
+      }
+      break;
     }
+    if (Math.abs(want - warm) > 0.02 || (want === 0 && warm !== 0)) {
+      warm = want;
+      $('stage').style.setProperty('--warm', want.toFixed(3));
+    }
+
+    const inRun = runs.findIndex((r) => el >= PRE + r.at && el <= PRE + r.until);
     if (inRun >= 0 && inRun !== flared) {
       flared = inRun;
       if (!runs[inRun].held) flare();
@@ -2830,7 +2863,7 @@ function sweep(c, onDone, opts) {
     else {
       // Leave the block sung through rather than snapping back to nothing.
       flatNodes.forEach((ns) => ns.forEach((n) => n.classList.remove('now')));
-      $('stage').classList.remove('shout');
+      $('stage').style.setProperty('--warm', '0');
       $('meter-fill').style.width = '0%';
       $('lead').classList.remove('on');
       $('level').hidden = true;
