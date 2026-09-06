@@ -2405,14 +2405,61 @@ function fillOf(w, beats, el) {
   return (done / whole) * 100;
 }
 
+/**
+ * The words as a fan should read them, with a broken word put back together.
+ *
+ * Breaking a word is for timing it, not for changing what the video says:
+ * 감아봤지만 is one word on screen however many pieces it is timed in. So the
+ * pieces are welded back into the word the file has — its own spelling and its
+ * own spacing, not the pieces glued end to end — and become the steps the
+ * sweep takes across it, which is what a welded word has always been.
+ *
+ * The colour then waits on 감아 for exactly as long as 감아 was given, and
+ * moves off it when 봤지만 begins, which is the whole point of breaking it.
+ */
+function shownWords(b, li) {
+  const l = b.lines[li];
+  if (!l) return [];
+  const file = builtChants.find((c) => c.id === b.id);
+  const from = file && file.lines[li] && file.lines[li].w;
+  if (!from) return l.w;
+  const out = [];
+  let n = 0;
+  let whole = 0;
+  while (n < l.w.length) {
+    const said = wordSplits[wordKey(b.id, li, whole)];
+    const took = said ? said.parts.length : 1;
+    if (!said || took < 2) {
+      out.push(l.w[n]);
+    } else {
+      const run = l.w.slice(n, n + took);
+      const one = from[whole] || run[0];
+      const head = run[0];
+      const tail = run[run.length - 1];
+      out.push({
+        ...one,
+        t: head.t,
+        d: +(tail.t + tail.d - head.t).toFixed(3),
+        p: run.map((p) => [p.k, p.t, p.d]),
+        rp: run.every((p) => p.r) ? run.map((p) => [p.r, p.t, p.d]) : undefined,
+        c: run.some((p) => p.c) ? 1 : 0,
+        s: run.some((p) => p.s) ? 1 : 0,
+      });
+    }
+    n += took;
+    whole += 1;
+  }
+  return out;
+}
+
 function paintChant(b) {
   flatWords = [];
   const rows = [];
   const wantRead = readingWanted();
-  for (const line of b.lines) {
+  for (let li = 0; li < b.lines.length; li += 1) {
     const kr = [];
     const ro = [];
-    for (const w of line.w) {
+    for (const w of shownWords(b, li)) {
       const i = flatWords.length;
       flatWords.push(w);
       const cls = 'w' + (w.c ? ' c' : '') + (w.s ? ' s' : '');
