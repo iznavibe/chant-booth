@@ -902,7 +902,7 @@ const EN = {
   stopAll: 'Stop',
   gathering: 'Putting it together…',
   nothingToHear: 'Record a block first.',
-  allOf: 'Block {n} of {m}',
+  allOf: '{n} / {m}',
   allEasy: "It doesn't have to be perfect or on time 🤗",
   scrubAria: 'Move through the song',
   someQuiet: '{n} could not be played back on this phone, so they are music only.',
@@ -1000,7 +1000,7 @@ const KO = {
   stopAll: '정지',
   gathering: '이어 붙이는 중…',
   nothingToHear: '먼저 한 구간을 녹음해 주세요.',
-  allOf: '{m}개 중 {n}번째 구간',
+  allOf: '{n} / {m}',
   allEasy: '완벽하지 않아도 박자가 좀 밀려도 괜찮아요 🤗',
   scrubAria: '노래 위치 옮기기',
   someQuiet: '{n}개는 이 휴대폰에서 재생되지 않아 반주만 나와요.',
@@ -1095,7 +1095,7 @@ const JA = {
   stopAll: '停止',
   gathering: 'つなげています…',
   nothingToHear: 'まず1ブロック録音してみてください。',
-  allOf: '{m} ブロック中 {n} 番目',
+  allOf: '{n} / {m}',
   allEasy: '完璧じゃなくても 少しズレても大丈夫 🤗',
   scrubAria: '再生位置を動かす',
   someQuiet: '{n} 件はこの端末で再生できないので、伴奏だけになります。',
@@ -4116,7 +4116,7 @@ function show(which) {
 function repaintLive() {
   if (!CHANTS.length) return;
   if (!screens.rec.hidden) goto(at);
-  else if (!screens.done.hidden) finish();
+  else if (!screens.done.hidden) drawTakes();
 }
 
 $('flag-ko').addEventListener('click', () => setLang('ko'));
@@ -4161,9 +4161,15 @@ function step(by) {
   goto(at + by);
 }
 
-function finish() {
-  stopPlaying();
-  if (typeof stopAll === 'function') stopAll();
+/**
+ * Draw the takes screen from what is there now.
+ *
+ * Separate from arriving at it, because switching language redraws every
+ * screen and this one was arrived at again each time: the run through
+ * everything stopped mid-song for no reason a fan could see. Nothing here
+ * touches what is playing.
+ */
+function drawTakes() {
   $('btn-done').textContent = t('myTakes');
   const n = takes.size;
   $('tally-n').textContent = n;
@@ -4176,6 +4182,15 @@ function finish() {
     .map((c, i) =>
       `<button class="tab ${takes.has(c.id) ? 'done' : ''}" data-i="${i}">${i + 1}</button>`)
     .join('');
+  // Redrawing has just put the button back to what it says at rest, and a run
+  // that is still going says the other thing.
+  if (typeof allTicks !== 'undefined' && allTicks) $('btn-all').textContent = t('stopAll');
+}
+
+function finish() {
+  stopPlaying();
+  if (typeof stopAll === 'function') stopAll();
+  drawTakes();
   show('done');
 }
 
