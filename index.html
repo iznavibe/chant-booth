@@ -4185,6 +4185,28 @@ function stopAll() {
   $('all-note').hidden = true;
 }
 
+/*
+ * Say where the run has got to, and notice when it is over.
+ *
+ * Counted from the moment everything was placed against rather than a second
+ * reading of the clock: the two are a scheduling apart, and that showed as the
+ * first block never being reached.
+ */
+function watchAll(ctx, opens, quiet) {
+  const mark = stops;
+  allTicks = setInterval(() => {
+    // Something else asked for the speaker, so this run is over whether or not
+    // it had finished.
+    if (stops !== mark) { stopAll(); return; }
+    const el = audio().currentTime - opens;
+    if (el >= allEnds) { stopAll(); return; }
+    // Before the first block has opened it is still the first block.
+    const now = allMarks.filter((m) => el >= m.from).pop() || allMarks[0];
+    $('all-note').textContent = t('allOf', { n: now.i + 1, m: CHANTS.length })
+      + (quiet ? ' · ' + t('someQuiet', { n: quiet }) : '');
+  }, 200);
+}
+
 async function hearAll() {
   if (allTicks) { stopAll(); return; }
   const mine = CHANTS.map((c, i) => ({ c, i, take: takes.get(c.id) })).filter((x) => x.take);
@@ -4217,10 +4239,44 @@ async function hearAll() {
     }
 
     const opens = ctx.currentTime + AHEAD + 0.05;
-    let head = opens;
     let quiet = 0;
     allMarks = [];
 
+    /*
+     * The song itself, where there is one, and the takes dropped into it.
+     *
+     * It comes out of the same file the timings were made against, so a block
+     * beginning at 59.81s in the song is 59.81s into this, to within a tenth
+     * of a millisecond. Nothing has to be lined up: the music runs from end to
+     * end without stopping, and each fan's voice comes in where they sang it.
+     *
+     * A take was recorded from a second before its first word — that second is
+     * the run-up they hear counting them in — so it goes back the same second
+     * early.
+     */
+    const whole = await guideBuffer('_song');
+    if (whole) {
+      playWindow(whole, 0, whole.duration, 0, true, GUIDE_UNDER, opens);
+      pieces.forEach(({ c, i, take, voice }) => {
+        if (voice.seconds <= 0) { quiet += 1; return; }
+        const skip = Math.max(0, (take.lag > 0 ? take.lag : 0) + NUDGE);
+        const at = c.at - PRE;
+        // A block that begins inside the first second starts the take at the
+        // song's own start, further into the take by however much is missing.
+        voice.start(true, skip + Math.max(0, -at), opens + Math.max(0, at));
+        allMarks.push({ i, from: Math.max(0, at), to: c.at + spanOf(c) });
+      });
+      allMarks.sort((a, z) => a.from - z.from);
+      allEnds = whole.duration;
+      $('btn-all').textContent = t('stopAll');
+      $('btn-all').disabled = false;
+      watchAll(ctx, opens, quiet);
+      return;
+    }
+
+    // Otherwise the clips, one block after another, which is every block's
+    // own music and no song in between.
+    let head = opens;
     pieces.forEach(({ c, i, take, where, buf, voice }) => {
       const lead = (buf && where.lead) || 0;
       const hold = buf && where.hold > 0 ? where.hold : 0;
@@ -4248,22 +4304,7 @@ async function hearAll() {
     allEnds = head - opens;
     $('btn-all').textContent = t('stopAll');
     $('btn-all').disabled = false;
-
-    // Counted from the moment everything was placed against, not from a second
-    // reading of the clock: the two are a scheduling apart, and that showed as
-    // the first block never being reached.
-    const mark = stops;
-    allTicks = setInterval(() => {
-      // Something else asked for the speaker, so this run is over whether or
-      // not it had finished.
-      if (stops !== mark) { stopAll(); return; }
-      const el = audio().currentTime - opens;
-      if (el >= allEnds) { stopAll(); return; }
-      // Before the first block has opened it is still the first block.
-      const now = allMarks.filter((m) => el >= m.from).pop() || allMarks[0];
-      $('all-note').textContent = t('allOf', { n: now.i + 1, m: CHANTS.length })
-        + (quiet ? ' · ' + t('someQuiet', { n: quiet }) : '');
-    }, 200);
+    watchAll(ctx, opens, quiet);
   } catch (err) {
     stopAll();
     $('all-note').hidden = false;
