@@ -583,8 +583,16 @@ function assemble(all, first, last) {
     // romaji is the better guide to where the words are, and following letters
     // instead would run 하늘 and 위로 together.
     const letter = even ? /[A-Za-z가-힣]/ : /[A-Za-z]/;
+    /*
+     * A hyphen the second piece opens with is inside the word, not between two.
+     *
+     * IZNA cuts "Slo-mo" as "Slo" and "-mo" to sweep the two halves, and the
+     * hyphen leading the second piece meant the two never joined: the booth
+     * asked for "Slo -mo". Only a leading one counts. A trailing dash is the
+     * video holding a note, 아-, and nothing to do with the word after it.
+     */
     const midWord = (a2, b2) =>
-      letter.test(a2.text.slice(-1)) && letter.test(b2.text[0] || '');
+      letter.test(a2.text.slice(-1)) && letter.test(b2.text.replace(/^-/, '')[0] || '');
 
     const groups = [];
     src.forEach((u, n) => {
