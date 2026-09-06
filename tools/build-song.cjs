@@ -67,40 +67,39 @@ const NOT_CHANTS = {
   timebomb: ['(Tic tic tic tic boom)'],
 };
 
-/*
- * And a line the crowd answers that carries no mark at all.
- *
- * TIMEBOMB brackets its 너와 나의 TIMEBOMB the first two times the crowd
- * answers it and not the last two, so those two passages had no chant in them
- * and never became blocks. The line is the same one either way.
- *
- * Matched on the whole line, so it takes only the bare answer and not the
- * longer lines that happen to contain the same words: izna's own
- * "너와 나의 TIMEBOMB (너와 나의 TIMEBOMB)" is a different line and already
- * marked, and so is the closing one that says it three times.
- */
-const ALSO_CHANTS = {
-  timebomb: ['너와 나의 TIMEBOMB'],
-};
-
 // Spaces removed, so a line is recognised however it happens to be spaced.
 const tight = (t) => t.replace(/\s+/g, '');
 const notAChant = (NOT_CHANTS[name] || []).map(tight);
-const isAChant = (ALSO_CHANTS[name] || []).map(tight);
+
+/*
+ * Near enough to be the same pink.
+ *
+ * The chant colour is one colour, but it is picked by hand in the editor and
+ * does not always land on the exact swatch: TIMEBOMB writes most of its chants
+ * in #FF4791 where the song says #FD538F. Two shades nobody could tell apart
+ * on screen mean the same thing, and asking for an exact match read a whole
+ * screen of chants as ordinary lyrics. Measured against the other colour these
+ * videos use, #F872AE, which is four times further away and does mean something
+ * else, so the two are in no danger of being confused.
+ */
+const NEAR = 20;
+const rgb = (c) => [1, 3, 5].map((i) => parseInt(c.substr(i, 2), 16));
+function sameColour(a, b) {
+  if (!a || !b || a.length !== 7 || b.length !== 7) return false;
+  const [r1, g1, b1] = rgb(a);
+  const [r2, g2, b2] = rgb(b);
+  return Math.hypot(r1 - r2, g1 - g2, b1 - b2) <= NEAR;
+}
 
 function chantFlags(lines, fanchant) {
   const want = (fanchant.baseColor || '').toLowerCase();
-  const painted = (s) => !!s.baseColor && s.baseColor.toLowerCase() === want;
+  const painted = (s) => !!s.baseColor && sameColour(s.baseColor.toLowerCase(), want);
   const flags = [];
   let inside = false;
   lines.forEach((sylls) => {
     const said = tight(sylls.map((u) => u.text).join(''));
     if (notAChant.includes(said)) {
       sylls.forEach(() => flags.push(false));
-      return;
-    }
-    if (isAChant.includes(said)) {
-      sylls.forEach(() => flags.push(true));
       return;
     }
     const spoken = sylls.some(painted);
