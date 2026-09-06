@@ -692,6 +692,13 @@ out.forEach((b, i) => { b.id = 'b' + (i + 1); });
  *           block 9 is almost the same shape and wants nothing, which is why
  *           this is a list and not a rule.
  *
+ *   drop    how many whole lines to take off the front of the block. Blocks are
+ *           cut where the singing stops, and IZNA sings the same three lines
+ *           into 뒤돌아 모두 Stop twice: the first time there is a breath before
+ *           the answer and the block is that line alone, the second time the
+ *           lines run together and it is not. The chant is the same one both
+ *           times, so the block should be too.
+ *
  *   pickup  how many words off the end of the line before the block to keep in
  *           front of its first line. RIP's "My evil side" is sung straight out
  *           of the line above it with no breath between the two, and the chant
@@ -701,7 +708,7 @@ out.forEach((b, i) => { b.id = 'b' + (i + 1); });
  */
 const BY_HAND = {
   rip: { b2: { pickup: 1 } },
-  izna: { b8: { before: 1 } },
+  izna: { b8: { before: 1 }, b10: { drop: 2 } },
   dumbhot: { b3: { before: 1 }, b10: { before: 1 }, b11: { before: 1 } },
   beep: { b5: { before: 1 }, b13: { before: 1 } },
 };
@@ -712,6 +719,11 @@ Object.entries(BY_HAND[name] || {}).forEach(([id, edit]) => {
   if (edit.before) {
     const from = Math.max(0, b.first - edit.before);
     if (from === b.first) { console.log(id + ': nothing in front to add'); return; }
+    Object.assign(b, assemble(b.all, from, b.last), { first: from });
+  }
+  if (edit.drop) {
+    const from = b.first + edit.drop;
+    if (from > b.last) { console.log(id + ': nothing would be left'); return; }
     Object.assign(b, assemble(b.all, from, b.last), { first: from });
   }
   if (edit.pickup) {
