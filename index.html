@@ -241,21 +241,20 @@
   .pip.now { background: var(--pink); }
 
   /*
-   * Three dots over the word the shouting starts on.
+   * Three dots that count the shouting in.
    *
-   * The ring is around the whole card, so it can say that something is
-   * happening but not where or quite when. These sit on the word itself and
-   * fill one at a time over the second before it, so the third arriving is the
-   * moment. Nothing sounds while the mic is open, and this is the only warning
-   * there is.
+   * The ring is around the whole card and lights at the same moment as the
+   * word it is warning about, which is too late to be a warning. These fill
+   * one at a time on the way in, the third arriving on the beat to sing. They
+   * hold their place whether anything is coming or not, so the eye learns
+   * where to sit rather than hunting for them.
    */
   .cue {
-    position: absolute;
     display: flex;
-    gap: 5px;
-    transform: translate(-50%, -100%);
+    justify-content: center;
+    gap: 7px;
+    margin-top: 14px;
     pointer-events: none;
-    z-index: 2;
   }
   .cue i {
     width: 5px;
@@ -269,7 +268,6 @@
   @media (prefers-reduced-motion: reduce) { .cue i { transition: none; } }
 
   .stage {
-    position: relative;
     background: linear-gradient(170deg, var(--pink-wash), var(--card) 70%);
     border: 1px solid var(--edge);
     border-radius: var(--radius);
@@ -778,13 +776,13 @@
     <div class="pips" id="pips"></div>
 
     <div class="stage" id="stage" style="margin-top:14px">
-      <div class="cue" id="cue" hidden aria-hidden="true"><i></i><i></i><i></i></div>
       <p class="legend" id="legend"></p>
       <span class="badge" id="chant-badge"></span>
       <div class="block" id="block"></div>
       <div class="lead" id="lead"><b id="lead-bar"></b></div>
       <div class="meter"><i id="meter-fill"></i></div>
       <div class="level" id="level" hidden><i id="level-bar"></i></div>
+      <div class="cue" id="cue" aria-hidden="true"><i></i><i></i><i></i></div>
       <p class="status" id="status"></p>
       <p class="countdown" id="countdown"></p>
     </div>
@@ -2747,7 +2745,7 @@ let sweepRun = 0;
 function stopSweep() {
   sweepRun += 1;
   $('stage').classList.remove('shout');
-  $('cue').hidden = true;
+  cueLit(0);
 }
 
 /**
@@ -2780,21 +2778,13 @@ const HOLD_OVER = 2;
  * How long the dots take to fill.
  *
  * Just under a second, near enough the count-in's own length that a fan meets
- * the same warning twice and learns it once. Three of them, one every third of
- * that, so the third lighting is the word arriving.
+ * the same warning twice and learns it once. The first lights at the far end
+ * of it, the second halfway, and the third on the word itself, so the count is
+ * read the way a count-in is heard rather than as something filling up.
  */
 const CUE_LEAD = 0.9;
 
-/** Put the dots above a word, in the card's own coordinates. */
-function cueOver(node) {
-  const cue = $('cue');
-  const stage = $('stage').getBoundingClientRect();
-  const on = node.getBoundingClientRect();
-  cue.style.left = `${on.left - stage.left + on.width / 2}px`;
-  cue.style.top = `${on.top - stage.top - 5}px`;
-}
-
-/** How many of the three are lit, given how close the shouting is. */
+/** Light the first n of the three. */
 function cueLit(n) {
   const dots = $('cue').children;
   for (let i = 0; i < dots.length; i += 1) dots[i].classList.toggle('on', i < n);
@@ -2823,16 +2813,9 @@ function sweep(c, onDone, opts) {
     else runs.push({ at: w.t, until: w.t + w.d });
   });
   runs.forEach((r) => { r.held = r.until - r.at >= HOLD_OVER; });
-  /*
-   * The word each stretch starts on, so the dots know where to sit. Held as an
-   * index into the flat list, since that is what the nodes are keyed by.
-   */
-  runs.forEach((r) => {
-    r.word = flatWords.findIndex((w) => w.c && Math.abs(w.t - r.at) < 0.001);
-  });
   let shouting = false;
   let flared = -1;
-  let cueing = -1;
+  let lit = -1;
   let loudest = 0;
   // Last drawn fill per word, so a frame only touches what moved.
 
@@ -2854,24 +2837,16 @@ function sweep(c, onDone, opts) {
     }
 
     /*
-     * The dots fill over the second before a stretch of shouting and are gone
-     * the moment it starts, which the ring and the word itself then carry.
+     * Two dots on the way in and the third on the beat, held for as long as
+     * there is shouting to do so the third one is seen rather than guessed at.
      */
     const pos = el - PRE;
-    const soon = runs.findIndex((r) => pos < r.at && pos > r.at - CUE_LEAD && r.word >= 0);
-    if (soon !== cueing) {
-      cueing = soon;
-      $('cue').hidden = soon < 0;
-      if (soon >= 0) {
-        const node = (flatNodes[runs[soon].word] || []).find((n) => n.dataset.row === 'k');
-        if (node) cueOver(node);
-        else { $('cue').hidden = true; cueing = -1; }
-      }
-    }
-    if (cueing >= 0) {
-      const left = runs[cueing].at - pos;
-      cueLit(Math.min(3, Math.max(0, Math.ceil((CUE_LEAD - left) / (CUE_LEAD / 3)))));
-    }
+    const soon = runs.find((r) => pos < r.at && pos > r.at - CUE_LEAD);
+    const going = runs.find((r) => pos >= r.at && pos <= r.until);
+    let want = 0;
+    if (going) want = 3;
+    else if (soon) want = 1 + Math.floor((CUE_LEAD - (soon.at - pos)) / (CUE_LEAD / 2));
+    if (want !== lit) { lit = want; cueLit(want); }
 
     /*
      * A long stretch keeps the ring up for as long as it lasts; a quick one
@@ -2914,7 +2889,7 @@ function sweep(c, onDone, opts) {
       // Leave the block sung through rather than snapping back to nothing.
       flatNodes.forEach((ns) => ns.forEach((n) => n.classList.remove('now')));
       $('stage').classList.remove('shout');
-      $('cue').hidden = true;
+      cueLit(0);
       $('meter-fill').style.width = '0%';
       $('lead').classList.remove('on');
       $('level').hidden = true;
