@@ -3552,10 +3552,19 @@ function showPlacing() {
   drawWave();
 }
 
-/** Drag the mark to the first word. */
+/** Drag the mark to the first word, or take hold of the window and slide it. */
 (function dragging() {
   const cv = $('wave');
   let held = false;
+  /*
+   * How far into the window it was taken hold of.
+   *
+   * Pressing inside the pink band moves it from wherever it was picked up, the
+   * way anything else that is dragged behaves: the band does not leap so that
+   * its mark lands under the finger. Pressing outside it is still a jump,
+   * which is how to cross the file in one go.
+   */
+  let grab = 0;
   const secAt = (e) => {
     const r = cv.getBoundingClientRect();
     const span = viewSpan();
@@ -3563,8 +3572,15 @@ function showPlacing() {
       viewFrom() + ((e.clientX - r.left) / r.width) * span));
   };
   const put = (e) => {
-    placing.mark = secAt(e);
+    placing.mark = Math.max(0, Math.min(placing.buf.duration, secAt(e) - grab));
     showPlacing();
+  };
+
+  /** The seconds the pink band covers: the run-up, then the block. */
+  const bandAt = () => {
+    const b = CHANTS[at];
+    const runUp = Math.min(placing.run, placing.mark);
+    return [placing.mark - runUp, placing.mark + spanOf(b) + tailOf(b)];
   };
   cv.addEventListener('pointerdown', (e) => {
     if (!placing) return;
@@ -3586,10 +3602,13 @@ function showPlacing() {
     cv.setPointerCapture(e.pointerId);
     held = true;
     cv.style.cursor = 'grabbing';
+    const sec = secAt(e);
+    const [from, to] = bandAt();
+    grab = sec >= from && sec <= to ? sec - placing.mark : 0;
     put(e);
   });
   cv.addEventListener('pointermove', (e) => { if (held && placing) put(e); });
-  const drop = () => { held = false; cv.style.cursor = 'grab'; };
+  const drop = () => { held = false; grab = 0; cv.style.cursor = 'grab'; };
   cv.addEventListener('pointerup', drop);
   cv.addEventListener('pointercancel', drop);
 })();
@@ -4216,13 +4235,37 @@ $('guide-snap').addEventListener('click', () => {
   showPlacing();
 });
 
-$('guide-hear').addEventListener('click', () => {
+function hearPlacing() {
   if (!placing || busy) return;
+  // Already sounding, so the press is asking for it to stop.
+  if (playing.length) { stopSweep(); stopPlaying(); return; }
   const b = CHANTS[at];
   const w = windowFor(placing.mark, b, placing.run);
   playWindow(placing.buf, w.from, w.len, w.lead);
   if (w.hold > 0) setTimeout(() => sweep(b, () => {}), w.hold * 1000);
   else sweep(b, () => {});
+}
+
+$('guide-hear').addEventListener('click', hearPlacing);
+
+/*
+ * Space plays what is placed, and stops it.
+ *
+ * Placing a guide is a hand on the waveform and an ear on the result, over and
+ * over, and reaching for a button between every pass is the slow part of it.
+ *
+ * Not while typing: the fields for breaking a word up and the one the
+ * service_role key is pasted into all need their spaces. Nor on a focused
+ * button, which space already presses.
+ */
+window.addEventListener('keydown', (e) => {
+  if (e.code !== 'Space' || e.repeat || !GUIDE || !placing) return;
+  const on = e.target;
+  const tag = on && on.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || tag === 'BUTTON'
+      || (on && on.isContentEditable)) return;
+  e.preventDefault();
+  hearPlacing();
 });
 
 /** Send the file once, then say where each block sits inside it. */
