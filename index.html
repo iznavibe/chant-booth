@@ -248,12 +248,16 @@
    * one at a time on the way in, the third arriving on the beat to sing. They
    * hold their place whether anything is coming or not, so the eye learns
    * where to sit rather than hunting for them.
+   *
+   * Above the words rather than below, because a block runs to anything from
+   * one line to four and only the top of it stays put. Reading and counting in
+   * then happen in one look instead of two.
    */
   .cue {
     display: flex;
     justify-content: center;
     gap: 7px;
-    margin-top: 14px;
+    margin-top: 12px;
     pointer-events: none;
   }
   .cue i {
@@ -778,11 +782,11 @@
     <div class="stage" id="stage" style="margin-top:14px">
       <p class="legend" id="legend"></p>
       <span class="badge" id="chant-badge"></span>
+      <div class="cue" id="cue" aria-hidden="true"><i></i><i></i><i></i></div>
       <div class="block" id="block"></div>
       <div class="lead" id="lead"><b id="lead-bar"></b></div>
       <div class="meter"><i id="meter-fill"></i></div>
       <div class="level" id="level" hidden><i id="level-bar"></i></div>
-      <div class="cue" id="cue" aria-hidden="true"><i></i><i></i><i></i></div>
       <p class="status" id="status"></p>
       <p class="countdown" id="countdown"></p>
     </div>
